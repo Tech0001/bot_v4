@@ -100,7 +100,7 @@ async def construct_market_prices(client):
 
   # Append other prices to DataFrame
   # You can limit the amount to loop though here to save time in development
-  for (i, market) in enumerate(tradeable_markets[0:]):
+  for (i, market) in enumerate(tradeable_markets[0:55]):
     print(f"Extracting prices for {i + 1} of {len(tradeable_markets)} tokens for {market}")
     close_prices_add = await get_candles_historical(client, market)
     df_add = pd.DataFrame(close_prices_add)

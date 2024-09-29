@@ -5,16 +5,16 @@ from decouple import config
 MARKET_DATA_MODE = "TESTNET" # vs "MAINNET"
 
 # Close all open positions and orders
-ABORT_ALL_POSITIONS = True
+ABORT_ALL_POSITIONS = False
 
 # Find Cointegrated Pairs
 FIND_COINTEGRATED = True
 
 # Manage Exits
-MANAGE_EXITS = True
+MANAGE_EXITS = False
 
 # Place Trades
-PLACE_TRADES = True
+PLACE_TRADES = False
 
 # Resolution
 RESOLUTION = "1HOUR"
@@ -25,11 +25,13 @@ WINDOW = 21
 # Thresholds - Opening
 MAX_HALF_LIFE = 24
 ZSCORE_THRESH = 1.5
-USD_PER_TRADE = 10
+USD_PER_TRADE = 25
 USD_MIN_COLLATERAL = 100
 
 # Thresholds - Closing
 CLOSE_AT_ZSCORE_CROSS = True
+
+
 
 # Endpoint for Account Queries on Testnet
 INDEXER_ENDPOINT_TESTNET = "https://indexer.v4testnet.dydx.exchange"
