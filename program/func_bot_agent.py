@@ -1,5 +1,5 @@
 # Import necessary functions and constants
-from func_private import place_market_order, check_order_status, cancel_order
+from func_private import place_market_order, check_order_status, cancel_order, get_order
 from datetime import datetime
 import time
 
@@ -56,6 +56,29 @@ class BotAgent:
             "comments": "",
         }
 
+    # Retry mechanism to fetch the order details if `createdAtHeight` is missing
+    async def retry_fetch_order(self, order_id, retries=3, delay=3):
+        """
+        Retry fetching the order details for a limited number of retries if `createdAtHeight` is missing.
+        :param order_id: ID of the order to fetch.
+        :param retries: Number of retries to attempt.
+        :param delay: Time (in seconds) to wait between retries.
+        :return: Order details or None if not found.
+        """
+        order = None
+        for attempt in range(retries):
+            order = await get_order(self.client, order_id)  # Assuming get_order fetches the order details
+
+            if order and "createdAtHeight" in order:
+                print(f"Order found with createdAtHeight: {order['createdAtHeight']}")
+                return order  # Success, order found with createdAtHeight
+
+            print(f"Retry {attempt + 1}/{retries} - Waiting for createdAtHeight...")
+            time.sleep(delay)
+
+        print(f"Warning: 'createdAtHeight' not found after {retries} retries. Proceeding without it.")
+        return order
+
     # Check order status by id
     async def check_order_status_by_id(self, order_id):
         time.sleep(2)
@@ -100,6 +123,12 @@ class BotAgent:
             self.order_dict["order_id_m1"] = order_id
             self.order_dict["order_time_m1"] = datetime.now().isoformat()
             print("First order sent...")
+
+            # Retry fetching the order to ensure createdAtHeight is recorded
+            base_order = await self.retry_fetch_order(order_id)
+
+            if base_order:
+                self.process_order_response(base_order, "m1")  # Log the order creation details
         except Exception as e:
             print(f"Error placing first order: {e}")
             self.order_dict["pair_status"] = "ERROR"
@@ -128,6 +157,13 @@ class BotAgent:
             self.order_dict["order_id_m2"] = order_id
             self.order_dict["order_time_m2"] = datetime.now().isoformat()
             print("Second order sent...")
+
+            # Retry fetching the order to ensure createdAtHeight is recorded
+            quote_order = await self.retry_fetch_order(order_id)
+
+            if quote_order:
+                self.process_order_response(quote_order, "m2")  # Log the order creation details
+
         except Exception as e:
             print(f"Error placing second order: {e}")
             self.order_dict["pair_status"] = "ERROR"
@@ -165,3 +201,15 @@ class BotAgent:
         print("SUCCESS: LIVE PAIR")
         self.order_dict["pair_status"] = "LIVE"
         return self.order_dict
+
+    # Process the order response to log details
+    def process_order_response(self, order, order_name):
+        """
+        Log the creation details of the order.
+        :param order: Order details.
+        :param order_name: The order name, either 'm1' or 'm2'.
+        """
+        if "createdAtHeight" in order:
+            print(f"{order_name}: Order created at block height: {order['createdAtHeight']}")
+        else:
+            print(f"Notice: 'createdAtHeight' not found for {order_name}. Proceeding without it.")
