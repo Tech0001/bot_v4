@@ -93,9 +93,9 @@ async def manage_trade_exits(client):
 
     # Get prices
     series_1 = await get_candles_recent(client, position_market_m1)
-    time.sleep(0.2)
+    time.sleep(0.5)
     series_2 = await get_candles_recent(client, position_market_m2)
-    time.sleep(0.2)
+    time.sleep(0.5)
 
     # Get markets for reference of tick size
     markets = await get_markets(client)
@@ -171,7 +171,7 @@ async def manage_trade_exits(client):
         print(">>> <<<")
 
         # Protect API
-        time.sleep(1)
+        time.sleep(2)
 
         # Close position for market 2
         print(">>> Closing market 2 <<<")

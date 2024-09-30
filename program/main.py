@@ -17,6 +17,7 @@ async def main():
     try:
         print("Connecting to Client...")
         client = await connect_dydx()
+        print("Connected to client successfully")
     except Exception as e:
         print("Error connecting to client: ", e)
         send_message(f"Failed to connect to client {e}")
@@ -26,6 +27,7 @@ async def main():
         try:
             print("Closing open positions...")
             await abort_all_positions(client)
+            print("All positions closed successfully")
         except Exception as e:
             print("Error closing all positions: ", e)
             send_message(f"Error closing all positions {e}")
@@ -35,7 +37,12 @@ async def main():
         try:
             print("Fetching token market prices...")
             df_market_prices = await construct_market_prices(client)
-            print(df_market_prices)
+            if df_market_prices is None:
+                print("Error: Market prices could not be constructed.")
+                send_message(f"Market prices could not be constructed.")
+                exit(1)
+            print("Market prices fetched successfully")
+            print(df_market_prices.head())  # Minimal output to check the data
         except Exception as e:
             print("Error constructing market prices: ", e)
             send_message(f"Error constructing market prices {e}")
@@ -47,6 +54,7 @@ async def main():
             if stores_result != "saved":
                 print("Error saving cointegrated pairs")
                 exit(1)
+            print("Cointegrated pairs stored successfully")
         except Exception as e:
             print("Error saving cointegrated pairs: ", e)
             send_message(f"Error saving cointegrated pairs {e}")
@@ -57,6 +65,7 @@ async def main():
             try:
                 print("Managing exits...")
                 await manage_trade_exits(client)
+                print("Exit management complete")
                 time.sleep(1)
             except Exception as e:
                 print("Error managing exiting positions: ", e)
@@ -67,6 +76,7 @@ async def main():
             try:
                 print("Finding trading opportunities...")
                 await open_positions(client)
+                print("Trades placed successfully")
             except Exception as e:
                 print("Error trading pairs: ", e)
                 send_message(f"Error opening trades {e}")
