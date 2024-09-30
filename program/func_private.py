@@ -125,19 +125,27 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         orders = await client.indexer_account.account.get_subaccount_orders(
             DYDX_ADDRESS, 0, ticker, return_latest_orders="true"
         )
+
+        # Fallback logic for missing createdAtHeight
         order_id = None
         for order in orders:
             if int(order["clientId"]) == market_order_id.client_id and int(order["clobPairId"]) == market_order_id.clob_pair_id:
                 order_id = order["id"]
                 break
 
-        # Use fallback for createdAtHeight and createdAt if missing
+        # If we couldn't find order_id using clientId and clobPairId, sort by createdAt or createdAtHeight
         if not order_id:
             sorted_orders = sorted(orders, key=lambda x: x.get("createdAtHeight", x.get("createdAt", 0)), reverse=True)
-            print("Warning: Unable to detect latest order. Order details:", sorted_orders)
+            if sorted_orders:
+                print("Warning: Using fallback for missing createdAtHeight. Latest order details:", sorted_orders[0])
+                order_id = sorted_orders[0].get("id")
+
+        if not order_id:
+            print("Warning: Unable to detect latest order. Proceeding without order_id.")
             return None, None
 
         return order, order_id
+
     except Exception as e:
         print(f"Error placing market order: {e}")
         return None, None
