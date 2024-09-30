@@ -125,14 +125,15 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         orders = await client.indexer_account.account.get_subaccount_orders(
             DYDX_ADDRESS, 0, ticker, return_latest_orders="true"
         )
-        order_id = ""
+        order_id = None
         for order in orders:
             if int(order["clientId"]) == market_order_id.client_id and int(order["clobPairId"]) == market_order_id.clob_pair_id:
                 order_id = order["id"]
                 break
 
-        if order_id == "":
-            sorted_orders = sorted(orders, key=lambda x: x.get("createdAtHeight", 0), reverse=True)
+        # Use fallback for createdAtHeight and createdAt if missing
+        if not order_id:
+            sorted_orders = sorted(orders, key=lambda x: x.get("createdAtHeight", x.get("createdAt", 0)), reverse=True)
             print("Warning: Unable to detect latest order. Order details:", sorted_orders)
             return None, None
 

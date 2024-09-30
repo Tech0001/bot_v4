@@ -203,6 +203,10 @@ async def open_positions(client):
                             print(f"Order created at height: {created_at_height}")
                         else:
                             print("Notice: 'createdAtHeight' not found in the order response. Proceeding without it.")
+                            if "id" in bot_open_dict:
+                                print(f"Order ID: {bot_open_dict['id']}")
+                            if "status" in bot_open_dict:
+                                print(f"Order Status: {bot_open_dict['status']}")
 
                         # Handle failure in opening trades
                         if bot_open_dict == "failed":

@@ -70,7 +70,7 @@ async def construct_market_prices(client):
     df.set_index("datetime", inplace=True)
     #For Development Select Market Number. Blank for Max Markets
 
-    for (i, market) in enumerate(tradeable_markets[1:53], start=1):
+    for (i, market) in enumerate(tradeable_markets[1:], start=1):
         print(f"Extracting prices for {i + 1} of {len(tradeable_markets)} tokens for {market}")
         close_prices_add = await get_candles_historical(client, market)
         df_add = pd.DataFrame(close_prices_add)
