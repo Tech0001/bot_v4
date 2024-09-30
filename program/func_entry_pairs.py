@@ -6,10 +6,21 @@ from func_private import get_open_positions, get_account
 from func_bot_agent import BotAgent
 import pandas as pd
 import json
-
-from pprint import pprint
+import time
 
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
+
+# Check if a position is open for a given market
+async def is_open_positions(client, market):
+    try:
+        open_positions = await get_open_positions(client)
+        for position in open_positions:
+            if position["market"] == market:
+                return True
+        return False
+    except Exception as e:
+        print(f"Error checking open positions for {market}: {e}")
+        return False
 
 # Open positions
 async def open_positions(client):
