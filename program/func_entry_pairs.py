@@ -1,26 +1,88 @@
-from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
+# Imports
+import random
+import time
+import json
+from dydx_v4_client import MAX_CLIENT_ID, Order, OrderFlags
+from dydx_v4_client.node.market import Market
+from dydx_v4_client.indexer.rest.constants import OrderType
+from constants import DYDX_ADDRESS, ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
 from func_public import get_candles_recent, get_markets
 from func_private import get_open_positions, get_account
 from func_bot_agent import BotAgent
 import pandas as pd
-import json
-import time
 
-IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
+# Refine or remove IGNORE_ASSETS if not necessary
+IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Example of assets you want to ignore
 
 # Check if a position is open for a given market
 async def is_open_positions(client, market):
     try:
         open_positions = await get_open_positions(client)
+
+        # Ensure open_positions is a list or dictionary-like structure before processing
+        if not isinstance(open_positions, (list, dict)):
+            raise ValueError(f"Unexpected data format for open positions: {open_positions}")
+
         for position in open_positions:
-            if position["market"] == market:
+            if isinstance(position, dict) and position.get("market") == market:
                 return True
         return False
     except Exception as e:
         print(f"Error checking open positions for {market}: {e}")
         return False
+
+# Place market order
+async def place_market_order(client, market, side, size, price, reduce_only):
+    try:
+        ticker = market
+        current_block = await client.node.latest_block_height()
+        market = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
+        market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
+        good_til_block = current_block + 1 + 10
+
+        time_in_force = Order.TIME_IN_FORCE_UNSPECIFIED
+        order = await client.node.place_order(
+            client.wallet,
+            market.order(
+                market_order_id,
+                order_type=OrderType.MARKET,
+                side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
+                size=float(size),
+                price=float(price),
+                time_in_force=time_in_force,
+                reduce_only=reduce_only,
+                good_til_block=good_til_block
+            )
+        )
+
+        time.sleep(1.5)
+
+        # Retrieve orders for the given ticker
+        orders = await client.indexer_account.account.get_subaccount_orders(
+            DYDX_ADDRESS, 0, ticker, return_latest_orders="true"
+        )
+
+        # Initialize order_id as empty
+        order_id = None
+
+        # Search for the matching order in the retrieved orders
+        for order in orders:
+            if int(order["clientId"]) == market_order_id.client_id and int(order["clobPairId"]) == market_order_id.clob_pair_id:
+                order_id = order["id"]
+                break
+
+        # Check if order_id was not found
+        if order_id is None:
+            sorted_orders = sorted(orders, key=lambda x: x.get("createdAtHeight", 0), reverse=True)
+            print("Warning: Unable to detect latest order. Order details:", sorted_orders)
+            order_id = sorted_orders[0]["id"]  # Fallback: Use the first order from sorted list
+
+        return order, order_id
+    except Exception as e:
+        print(f"Error placing market order: {e}")
+        return None, None
 
 # Open positions
 async def open_positions(client):
@@ -56,7 +118,12 @@ async def open_positions(client):
 
         # Skip ignored assets
         if base_market in IGNORE_ASSETS or quote_market in IGNORE_ASSETS:
+            print(f"Skipping ignored asset pair: {base_market} - {quote_market}")
             continue
+
+        # Log to ensure BTC-USD is being processed
+        if base_market == "BTC-USD" or quote_market == "BTC-USD":
+            print(f"Processing BTC-USD pair: {base_market} - {quote_market}")
 
         # Get recent prices
         try:
@@ -135,14 +202,14 @@ async def open_positions(client):
                             created_at_height = bot_open_dict["createdAtHeight"]
                             print(f"Order created at height: {created_at_height}")
                         else:
-                            print("Error: 'createdAtHeight' not found in the order response")
+                            print("Notice: 'createdAtHeight' not found in the order response. Proceeding without it.")
 
                         # Handle failure in opening trades
                         if bot_open_dict == "failed":
                             continue
 
                         # Confirm the trade is live
-                        if bot_open_dict["pair_status"] == "LIVE":
+                        if bot_open_dict.get("pair_status") == "LIVE":
                             bot_agents.append(bot_open_dict)
 
                             # Save the trade to JSON file
