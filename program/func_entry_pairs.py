@@ -36,7 +36,7 @@ async def open_positions(client):
         base_market = row["base_market"]
         quote_market = row["quote_market"]
         hedge_ratio = row["hedge_ratio"]
-        pprint(f"Processing pair: {base_market} - {quote_market} with hedge ratio: {hedge_ratio}")
+        print(f"Processing pair: {base_market} - {quote_market} with hedge ratio: {hedge_ratio}")
 
         # Check if the market pair is to be ignored
         if base_market in IGNORE_ASSETS or quote_market in IGNORE_ASSETS:
@@ -50,4 +50,4 @@ async def open_positions(client):
             print(f"Error fetching candles for {base_market} or {quote_market}: {e}")
             continue
 
-        print
+        
