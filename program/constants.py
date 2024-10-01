@@ -20,12 +20,12 @@ PLACE_TRADES = True
 RESOLUTION = "1HOUR"
 
 # Stats Window
-WINDOW = 25  # Rolling window for cointegration
+WINDOW = 20  # Rolling window for cointegration
 
 # Thresholds - Opening
-MAX_HALF_LIFE = 20  # Maximum half-life for a cointegrated pair
-ZSCORE_THRESH = 1.5  # Z-score threshold for opening trades
-USD_PER_TRADE = 35  # Amount in USD per trade
+MAX_HALF_LIFE = 15  # Maximum half-life for a cointegrated pair
+ZSCORE_THRESH = 2.0  # Z-score threshold for opening trades
+USD_PER_TRADE = 50  # Amount in USD per trade
 USD_MIN_COLLATERAL = 150  # Minimum collateral to ensure sufficient funds
 
 # Thresholds - Closing
