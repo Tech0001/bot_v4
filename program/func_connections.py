@@ -1,5 +1,5 @@
 import time
-import gc  # Import for garbage collection
+import gc  # Garbage collection import for memory management
 from dydx_v4_client import NodeClient, Wallet
 from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
 from dydx_v4_client.network import TESTNET
@@ -25,9 +25,7 @@ async def connect_dydx():
     for attempt in range(GRPC_RETRY_ATTEMPTS):
         try:
             print(f"Attempt {attempt + 1}/{GRPC_RETRY_ATTEMPTS}: Connecting to node...")
-            # Establish connection to the node
             node = await NodeClient.connect(TESTNET.node)
-            # Create wallet using mnemonic
             wallet = await Wallet.from_mnemonic(node, MNEMONIC, DYDX_ADDRESS)
             print("Node connection successful.")
             break
@@ -41,7 +39,7 @@ async def connect_dydx():
                 raise e
 
     # Ensure memory is managed properly after each attempt
-    gc.collect()  # Trigger garbage collection to free up memory after retries
+    gc.collect()  # Initial garbage collection after connection retries
 
     client = Client(indexer, indexer_account, node, wallet)
     await check_jurisdiction(client, "BTC-USD")
@@ -51,7 +49,6 @@ async def connect_dydx():
 async def check_jurisdiction(client, market):
     print("Checking Jurisdiction...")
     try:
-        # Verifying market connection by fetching recent candles
         await get_candles_recent(client, market)
         print(" ")
         print("--------------------------------------------------------------------------------")
@@ -67,3 +64,14 @@ async def check_jurisdiction(client, market):
             print("--------------------------------------------------------------------------------")
             print("DYDX likely prohibits use from your country.")
         exit(1)
+
+# Fetching market prices with garbage collection every 5 tokens after the 4th token
+async def fetch_market_prices(client, token_list):
+    for i, token in enumerate(token_list):
+        print(f"Extracting prices for {i + 1} of {len(token_list)} tokens for {token}")
+        await get_candles_recent(client, token)
+        
+        # Trigger garbage collection after 4th token and then every 5th token
+        if i >= 3 and (i + 1) % 5 == 0:
+            print(f"Garbage collection triggered after fetching {i + 1} tokens...")
+            gc.collect()
