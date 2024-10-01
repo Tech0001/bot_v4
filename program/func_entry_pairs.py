@@ -14,7 +14,7 @@ from func_bot_agent import BotAgent
 import pandas as pd
 
 # Refine or remove IGNORE_ASSETS if not necessary
-IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Example of assets you want to ignore
+IGNORE_ASSETS = ["", ""]  # Example of assets you want to ignore
 
 # Check if a position is open for a given market
 async def is_open_positions(client, market):

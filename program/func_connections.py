@@ -1,8 +1,9 @@
 from dydx_v4_client import NodeClient, Wallet
 from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
 from dydx_v4_client.network import TESTNET
-from constants import INDEXER_ACCOUNT_ENDPOINT, INDEXER_ENDPOINT_MAINNET, MNEMONIC, DYDX_ADDRESS, MARKET_DATA_MODE
+from constants import INDEXER_ACCOUNT_ENDPOINT, INDEXER_ENDPOINT_MAINNET, MNEMONIC, DYDX_ADDRESS, MARKET_DATA_MODE, API_TIMEOUT, GRPC_RETRY_ATTEMPTS, GRPC_RETRY_DELAY
 from func_public import get_candles_recent
+import time
 
 class Client:
     def __init__(self, indexer, indexer_account, node, wallet):
@@ -11,17 +12,32 @@ class Client:
         self.node = node
         self.wallet = wallet
 
+# Adding retry logic for better stability in node connection
 async def connect_dydx():
     market_data_endpoint = INDEXER_ENDPOINT_MAINNET if MARKET_DATA_MODE != "TESTNET" else INDEXER_ACCOUNT_ENDPOINT
-    indexer = IndexerClient(host=market_data_endpoint, api_timeout=5)
-    indexer_account = IndexerClient(host=INDEXER_ACCOUNT_ENDPOINT, api_timeout=5)
-    
-    # Establishing a connection to the node
-    node = await NodeClient.connect(TESTNET.node)
-    
-    # Creating the wallet from the mnemonic and node connection
-    wallet = await Wallet.from_mnemonic(node, MNEMONIC, DYDX_ADDRESS)
-    
+    indexer = IndexerClient(host=market_data_endpoint, api_timeout=API_TIMEOUT)
+    indexer_account = IndexerClient(host=INDEXER_ACCOUNT_ENDPOINT, api_timeout=API_TIMEOUT)
+
+    node = None
+    wallet = None
+
+    for attempt in range(GRPC_RETRY_ATTEMPTS):
+        try:
+            print(f"Attempt {attempt + 1}/{GRPC_RETRY_ATTEMPTS}: Connecting to node...")
+            # Updated: Removed the 'timeout' argument
+            node = await NodeClient.connect(TESTNET.node)
+            wallet = await Wallet.from_mnemonic(node, MNEMONIC, DYDX_ADDRESS)
+            print("Node connection successful.")
+            break
+        except Exception as e:
+            print(f"Error connecting to node: {e}")
+            if attempt < GRPC_RETRY_ATTEMPTS - 1:
+                print(f"Retrying in {GRPC_RETRY_DELAY} seconds...")
+                time.sleep(GRPC_RETRY_DELAY)
+            else:
+                print("Max retries reached. Exiting.")
+                raise e
+
     client = Client(indexer, indexer_account, node, wallet)
     await check_juristiction(client, "BTC-USD")
     return client

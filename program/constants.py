@@ -8,7 +8,7 @@ MARKET_DATA_MODE = "TESTNET"  # Options: "TESTNET" or "MAINNET"
 ABORT_ALL_POSITIONS = False
 
 # Find Cointegrated Pairs
-FIND_COINTEGRATED = False
+FIND_COINTEGRATED = True
 
 # Manage Exits
 MANAGE_EXITS = True
@@ -35,6 +35,12 @@ CLOSE_AT_ZSCORE_CROSS = True  # Close positions when z-score crosses
 INDEXER_ENDPOINT_TESTNET = "https://indexer.v4testnet.dydx.exchange"
 INDEXER_ENDPOINT_MAINNET = "https://indexer.dydx.exchange"
 INDEXER_ACCOUNT_ENDPOINT = INDEXER_ENDPOINT_TESTNET  # Set this to MAINNET for live environment
+
+#TIMEOUTS
+API_TIMEOUT = 10  # Timeout for API requests
+GRPC_RETRY_ATTEMPTS = 5  # Number of retry attempts for gRPC connection
+GRPC_RETRY_DELAY = 2  # Delay between retries in seconds
+
 
 # gRPC Endpoints for Testnet and Mainnet
 GRPC_ENDPOINT_TESTNET = "grpc.testnet.dydx.exchange:443"
