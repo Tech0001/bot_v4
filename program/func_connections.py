@@ -8,6 +8,7 @@ from dydx_v4_client.indexer.socket.websocket import IndexerSocket
 from dydx_v4_client.network import TESTNET
 from constants import INDEXER_ACCOUNT_ENDPOINT, INDEXER_ENDPOINT_MAINNET, MNEMONIC, DYDX_ADDRESS, MARKET_DATA_MODE, API_TIMEOUT, GRPC_RETRY_ATTEMPTS, GRPC_RETRY_DELAY
 from func_public import get_candles_recent
+from grpc import StatusCode  # To catch specific gRPC errors
 
 # Logging setup for better tracking
 logging.basicConfig(
@@ -24,7 +25,7 @@ class Client:
         self.wallet = wallet
         self.websocket = websocket
 
-# Adding retry logic for better stability in node connection
+# Adding retry logic with exponential backoff
 async def connect_dydx():
     market_data_endpoint = INDEXER_ENDPOINT_MAINNET if MARKET_DATA_MODE != "TESTNET" else INDEXER_ACCOUNT_ENDPOINT
     indexer = IndexerClient(host=market_data_endpoint, api_timeout=API_TIMEOUT)
@@ -33,6 +34,7 @@ async def connect_dydx():
     node = None
     wallet = None
     websocket = None
+    backoff = GRPC_RETRY_DELAY
 
     for attempt in range(GRPC_RETRY_ATTEMPTS):
         try:
@@ -48,9 +50,15 @@ async def connect_dydx():
             break
         except Exception as e:
             logging.error(f"Error connecting to node or WebSocket: {e}")
+
+            # Specific handling for gRPC 503 errors (Server Unavailable)
+            if isinstance(e, StatusCode) and e.code() == StatusCode.UNAVAILABLE:
+                logging.error("gRPC UNAVAILABLE (503): The server is unavailable. Retrying...")
+            
             if attempt < GRPC_RETRY_ATTEMPTS - 1:
-                logging.info(f"Retrying in {GRPC_RETRY_DELAY} seconds...")
-                time.sleep(GRPC_RETRY_DELAY)
+                logging.info(f"Retrying in {backoff} seconds...")
+                time.sleep(backoff)
+                backoff *= 2  # Exponential backoff
             else:
                 logging.error("Max retries reached. Exiting.")
                 raise e
