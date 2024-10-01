@@ -3,6 +3,8 @@ from func_private import place_market_order, check_order_status, cancel_order, g
 from datetime import datetime
 import asyncio
 import logging
+import random  # Import for generating unique order IDs
+from constants import DYDX_ADDRESS, MNEMONIC  # Use MNEMONIC and DYDX_ADDRESS from your provided terms
 
 # Class: Agent for managing opening and checking trades
 class BotAgent:
@@ -23,6 +25,7 @@ class BotAgent:
         z_score,
         half_life,
         hedge_ratio,
+        time_in_force="DEFAULT",  # Added for TIF
     ):
         self.client = client
         self.market_1 = market_1
@@ -37,6 +40,7 @@ class BotAgent:
         self.z_score = z_score
         self.half_life = half_life
         self.hedge_ratio = hedge_ratio
+        self.time_in_force = time_in_force  # Keep time in force setting for orders
 
         # Initialize output variable
         self.order_dict = {
@@ -70,18 +74,10 @@ class BotAgent:
         logging.error(f"Warning: 'createdAtHeight' not found after {retries} retries. Proceeding without it.")
         return order
 
-    # Check order status by id
-    async def check_order_status_by_id(self, order_id):
-        await asyncio.sleep(2)
-        order_status = await check_order_status(self.client, order_id)
-
-        if order_status == "CANCELED":
-            logging.error(f"{self.market_1} vs {self.market_2} - Order canceled...")
-            self.order_dict["pair_status"] = "FAILED"
-            return "failed"
-
-        if order_status != "FILLED":
-            await asyncio.sleep(15)
+    # Check order status by id with retries
+    async def check_order_status_by_id(self, order_id, retries=3, delay=3):
+        for attempt in range(retries):
+            await asyncio.sleep(2)
             order_status = await check_order_status(self.client, order_id)
 
             if order_status == "CANCELED":
@@ -89,19 +85,26 @@ class BotAgent:
                 self.order_dict["pair_status"] = "FAILED"
                 return "failed"
 
-            if order_status != "FILLED":
-                await cancel_order(self.client, order_id)
-                self.order_dict["pair_status"] = "ERROR"
-                logging.error(f"{self.market_1} vs {self.market_2} - Order error. Cancellation request sent.")
-                return "error"
+            if order_status == "FILLED":
+                return "live"
 
-        return "live"
+            logging.warning(f"Order status not filled. Attempt {attempt + 1}/{retries}. Retrying...")
+            await asyncio.sleep(delay)
 
-    # Open trades
+        logging.error(f"Order status check failed after {retries} retries. Canceling order...")
+        await cancel_order(self.client, order_id)
+        self.order_dict["pair_status"] = "ERROR"
+        return "error"
+
+    # Open trades with improved retry logic
     async def open_trades(self):
         logging.info(f"{self.market_1}: Placing first order (Side: {self.base_side}, Size: {self.base_size}, Price: {self.base_price})")
 
         try:
+            # Unique order ID generation using random
+            order_id_m1 = f"{DYDX_ADDRESS}_{random.randint(1, 100000)}"
+
+            # Place first order
             (base_order, order_id) = await place_market_order(
                 self.client,
                 market=self.market_1,
@@ -110,11 +113,11 @@ class BotAgent:
                 price=self.base_price,
                 reduce_only=False
             )
-            self.order_dict["order_id_m1"] = order_id
+            self.order_dict["order_id_m1"] = order_id_m1
             self.order_dict["order_time_m1"] = datetime.now().isoformat()
             logging.info("First order sent...")
 
-            base_order = await self.retry_fetch_order(order_id)
+            base_order = await self.retry_fetch_order(order_id_m1)
 
             if base_order:
                 self.process_order_response(base_order, "m1")
@@ -134,6 +137,10 @@ class BotAgent:
         logging.info(f"{self.market_2}: Placing second order (Side: {self.quote_side}, Size: {self.quote_size}, Price: {self.quote_price})")
 
         try:
+            # Unique order ID generation for second market
+            order_id_m2 = f"{DYDX_ADDRESS}_{random.randint(1, 100000)}"
+
+            # Place second order
             (quote_order, order_id) = await place_market_order(
                 self.client,
                 market=self.market_2,
@@ -142,11 +149,11 @@ class BotAgent:
                 price=self.quote_price,
                 reduce_only=False
             )
-            self.order_dict["order_id_m2"] = order_id
+            self.order_dict["order_id_m2"] = order_id_m2
             self.order_dict["order_time_m2"] = datetime.now().isoformat()
             logging.info("Second order sent...")
 
-            quote_order = await self.retry_fetch_order(order_id)
+            quote_order = await self.retry_fetch_order(order_id_m2)
 
             if quote_order:
                 self.process_order_response(quote_order, "m2")
