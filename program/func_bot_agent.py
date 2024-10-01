@@ -58,24 +58,14 @@ class BotAgent:
 
     # Retry mechanism to fetch the order details if `createdAtHeight` is missing
     async def retry_fetch_order(self, order_id, retries=3, delay=3):
-        """
-        Retry fetching the order details for a limited number of retries if `createdAtHeight` is missing.
-        :param order_id: ID of the order to fetch.
-        :param retries: Number of retries to attempt.
-        :param delay: Time (in seconds) to wait between retries.
-        :return: Order details or None if not found.
-        """
         order = None
         for attempt in range(retries):
-            order = await get_order(self.client, order_id)  # Assuming get_order fetches the order details
-
+            order = await get_order(self.client, order_id)
             if order and "createdAtHeight" in order:
                 print(f"Order found with createdAtHeight: {order['createdAtHeight']}")
-                return order  # Success, order found with createdAtHeight
-
+                return order
             print(f"Retry {attempt + 1}/{retries} - Waiting for createdAtHeight...")
             time.sleep(delay)
-
         print(f"Warning: 'createdAtHeight' not found after {retries} retries. Proceeding without it.")
         return order
 
@@ -124,11 +114,10 @@ class BotAgent:
             self.order_dict["order_time_m1"] = datetime.now().isoformat()
             print("First order sent...")
 
-            # Retry fetching the order to ensure createdAtHeight is recorded
             base_order = await self.retry_fetch_order(order_id)
 
             if base_order:
-                self.process_order_response(base_order, "m1")  # Log the order creation details
+                self.process_order_response(base_order, "m1")
         except Exception as e:
             print(f"Error placing first order: {e}")
             self.order_dict["pair_status"] = "ERROR"
@@ -158,11 +147,10 @@ class BotAgent:
             self.order_dict["order_time_m2"] = datetime.now().isoformat()
             print("Second order sent...")
 
-            # Retry fetching the order to ensure createdAtHeight is recorded
             quote_order = await self.retry_fetch_order(order_id)
 
             if quote_order:
-                self.process_order_response(quote_order, "m2")  # Log the order creation details
+                self.process_order_response(quote_order, "m2")
 
         except Exception as e:
             print(f"Error placing second order: {e}")
@@ -178,6 +166,7 @@ class BotAgent:
             self.order_dict["comments"] = f"{self.market_2} failed to fill"
 
             try:
+                print(f"Attempting to close position on {self.market_1} due to failed second order...")
                 (close_order, order_id) = await place_market_order(
                     self.client,
                     market=self.market_1,
@@ -190,12 +179,18 @@ class BotAgent:
                 time.sleep(2)
                 order_status_close_order = await check_order_status(self.client, order_id)
                 if order_status_close_order != "FILLED":
-                    print("ABORT PROGRAM")
+                    print(f"Error closing position on {self.market_1}. Status: {order_status_close_order}")
+                    print(f"ABORT PROGRAM - Unable to close position on {self.market_1}")
+                    self.order_dict["comments"] = f"ABORT PROGRAM: Failed to close position on {self.market_1}"
                     exit(1)
+                else:
+                    print(f"Position closed successfully for {self.market_1}")
+
             except Exception as e:
-                print(f"Error closing first order: {e}")
+                print(f"Error closing first order on {self.market_1}: {e}")
                 self.order_dict["pair_status"] = "ERROR"
                 self.order_dict["comments"] = f"Close Market 1 {self.market_1}: {e}"
+                print(f"ABORT PROGRAM - Exception while closing first order")
                 exit(1)
 
         print("SUCCESS: LIVE PAIR")
@@ -204,11 +199,6 @@ class BotAgent:
 
     # Process the order response to log details
     def process_order_response(self, order, order_name):
-        """
-        Log the creation details of the order.
-        :param order: Order details.
-        :param order_name: The order name, either 'm1' or 'm2'.
-        """
         if "createdAtHeight" in order:
             print(f"{order_name}: Order created at block height: {order['createdAtHeight']}")
         else:
