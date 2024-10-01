@@ -42,6 +42,7 @@ GRPC_ENDPOINT_MAINNET = "grpc.mainnet.dydx.exchange:443"
 INDEXER_GRPC_ENDPOINT_TESTNET = "indexer.testnet.dydx.exchange:443"
 INDEXER_GRPC_ENDPOINT_MAINNET = "indexer.mainnet.dydx.exchange:443"
 
+
 # Environment Variables loaded via config
 DYDX_ADDRESS = config("DYDX_ADDRESS")  # Address for your dYdX account
 SECRET_PHRASE = config("SECRET_PHRASE")  # Your secret phrase for the wallet
