@@ -1,6 +1,7 @@
 import time
 import logging
 import asyncio
+import gc  # For garbage collection to manage memory
 from dydx_v4_client import NodeClient, Wallet
 from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
 from dydx_v4_client.indexer.socket.websocket import IndexerSocket
@@ -21,7 +22,7 @@ class Client:
         self.indexer_account = indexer_account
         self.node = node
         self.wallet = wallet
-        self.websocket = websocket  # Adding websocket client for real-time updates
+        self.websocket = websocket
 
 # Adding retry logic for better stability in node connection
 async def connect_dydx():
@@ -38,8 +39,11 @@ async def connect_dydx():
             logging.info(f"Attempt {attempt + 1}/{GRPC_RETRY_ATTEMPTS}: Connecting to node...")
             node = await NodeClient.connect(TESTNET.node)
             wallet = await Wallet.from_mnemonic(node, MNEMONIC, DYDX_ADDRESS)
+            
+            # WebSocket Connection
             websocket = IndexerSocket(TESTNET.websocket_indexer, on_open=on_open, on_message=on_message)
             await websocket.connect()  # Connect to the WebSocket for real-time data
+
             logging.info("Node and WebSocket connection successful.")
             break
         except Exception as e:
@@ -51,7 +55,9 @@ async def connect_dydx():
                 logging.error("Max retries reached. Exiting.")
                 raise e
 
-    # Ensure memory is managed properly after each attempt
+    # Call garbage collection to free memory and prevent crashes
+    gc.collect()
+
     client = Client(indexer, indexer_account, node, wallet, websocket)
     await check_jurisdiction(client, "BTC-USD")
     return client
@@ -86,3 +92,4 @@ def on_open(ws):
 
 def on_message(ws, message):
     logging.info(f"WebSocket message received: {message}")
+
