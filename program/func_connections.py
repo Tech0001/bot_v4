@@ -1,17 +1,27 @@
 import time
-import gc  # Garbage collection import for memory management
+import logging
+import asyncio
 from dydx_v4_client import NodeClient, Wallet
 from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
+from dydx_v4_client.indexer.socket.websocket import IndexerSocket
 from dydx_v4_client.network import TESTNET
 from constants import INDEXER_ACCOUNT_ENDPOINT, INDEXER_ENDPOINT_MAINNET, MNEMONIC, DYDX_ADDRESS, MARKET_DATA_MODE, API_TIMEOUT, GRPC_RETRY_ATTEMPTS, GRPC_RETRY_DELAY
 from func_public import get_candles_recent
 
+# Logging setup for better tracking
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()]
+)
+
 class Client:
-    def __init__(self, indexer, indexer_account, node, wallet):
+    def __init__(self, indexer, indexer_account, node, wallet, websocket):
         self.indexer = indexer
         self.indexer_account = indexer_account
         self.node = node
         self.wallet = wallet
+        self.websocket = websocket  # Adding websocket client for real-time updates
 
 # Adding retry logic for better stability in node connection
 async def connect_dydx():
@@ -21,57 +31,58 @@ async def connect_dydx():
 
     node = None
     wallet = None
+    websocket = None
 
     for attempt in range(GRPC_RETRY_ATTEMPTS):
         try:
-            print(f"Attempt {attempt + 1}/{GRPC_RETRY_ATTEMPTS}: Connecting to node...")
+            logging.info(f"Attempt {attempt + 1}/{GRPC_RETRY_ATTEMPTS}: Connecting to node...")
             node = await NodeClient.connect(TESTNET.node)
             wallet = await Wallet.from_mnemonic(node, MNEMONIC, DYDX_ADDRESS)
-            print("Node connection successful.")
+            websocket = IndexerSocket(TESTNET.websocket_indexer, on_open=on_open, on_message=on_message)
+            await websocket.connect()  # Connect to the WebSocket for real-time data
+            logging.info("Node and WebSocket connection successful.")
             break
         except Exception as e:
-            print(f"Error connecting to node: {e}")
+            logging.error(f"Error connecting to node or WebSocket: {e}")
             if attempt < GRPC_RETRY_ATTEMPTS - 1:
-                print(f"Retrying in {GRPC_RETRY_DELAY} seconds...")
+                logging.info(f"Retrying in {GRPC_RETRY_DELAY} seconds...")
                 time.sleep(GRPC_RETRY_DELAY)
             else:
-                print("Max retries reached. Exiting.")
+                logging.error("Max retries reached. Exiting.")
                 raise e
 
     # Ensure memory is managed properly after each attempt
-    gc.collect()  # Initial garbage collection after connection retries
-
-    client = Client(indexer, indexer_account, node, wallet)
+    client = Client(indexer, indexer_account, node, wallet, websocket)
     await check_jurisdiction(client, "BTC-USD")
     return client
 
 # Checking jurisdiction to verify if the connection is blocked in certain regions
 async def check_jurisdiction(client, market):
-    print("Checking Jurisdiction...")
+    logging.info("Checking Jurisdiction...")
     try:
         await get_candles_recent(client, market)
-        print(" ")
-        print("--------------------------------------------------------------------------------")
-        print("SUCCESS: CONNECTION WORKING")
-        print("--------------------------------------------------------------------------------")
-        print(" ")
+        logging.info(" ")
+        logging.info("--------------------------------------------------------------------------------")
+        logging.info("SUCCESS: CONNECTION WORKING")
+        logging.info("--------------------------------------------------------------------------------")
+        logging.info(" ")
     except Exception as e:
-        print(e)
+        logging.error(e)
         if "403" in str(e):
-            print(" ")
-            print("--------------------------------------------------------------------------------")
-            print("FAILED: LOCATION ACCESS LIKELY PROHIBITED")
-            print("--------------------------------------------------------------------------------")
-            print("DYDX likely prohibits use from your country.")
+            logging.error(" ")
+            logging.error("--------------------------------------------------------------------------------")
+            logging.error("FAILED: LOCATION ACCESS LIKELY PROHIBITED")
+            logging.error("--------------------------------------------------------------------------------")
+            logging.error("DYDX likely prohibits use from your country.")
         exit(1)
 
-# Fetching market prices with garbage collection every 5 tokens after the 4th token
-async def fetch_market_prices(client, token_list):
-    for i, token in enumerate(token_list):
-        print(f"Extracting prices for {i + 1} of {len(token_list)} tokens for {token}")
-        await get_candles_recent(client, token)
-        
-        # Trigger garbage collection after 4th token and then every 5th token
-        if i >= 3 and (i + 1) % 5 == 0:
-            print(f"Garbage collection triggered after fetching {i + 1} tokens...")
-            gc.collect()
+# WebSocket event handling (from the example)
+def on_open(ws):
+    ws.subaccounts.subscribe(address=DYDX_ADDRESS, subaccount_number=0)
+    ws.markets.subscribe()
+    ws.trades.subscribe(id="ETH-USD")
+    ws.order_book.subscribe(id="ETH-USD")
+    logging.info("WebSocket subscribed to subaccounts, markets, trades, order_book.")
+
+def on_message(ws, message):
+    logging.info(f"WebSocket message received: {message}")
