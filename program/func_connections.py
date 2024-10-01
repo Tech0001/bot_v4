@@ -15,15 +15,21 @@ async def connect_dydx():
     market_data_endpoint = INDEXER_ENDPOINT_MAINNET if MARKET_DATA_MODE != "TESTNET" else INDEXER_ACCOUNT_ENDPOINT
     indexer = IndexerClient(host=market_data_endpoint, api_timeout=5)
     indexer_account = IndexerClient(host=INDEXER_ACCOUNT_ENDPOINT, api_timeout=5)
+    
+    # Establishing a connection to the node
     node = await NodeClient.connect(TESTNET.node)
+    
+    # Creating the wallet from the mnemonic and node connection
     wallet = await Wallet.from_mnemonic(node, MNEMONIC, DYDX_ADDRESS)
+    
     client = Client(indexer, indexer_account, node, wallet)
     await check_juristiction(client, "BTC-USD")
     return client
 
 async def check_juristiction(client, market):
-    print("Checking Juristiction...")
+    print("Checking Jurisdiction...")
     try:
+        # Verifying market connection by fetching recent candles
         await get_candles_recent(client, market)
         print(" ")
         print("--------------------------------------------------------------------------------")
@@ -35,7 +41,7 @@ async def check_juristiction(client, market):
         if "403" in str(e):
             print(" ")
             print("--------------------------------------------------------------------------------")
-            print("FAILED: LOCATION ACCESS LIKELY PROHIBTIED")
+            print("FAILED: LOCATION ACCESS LIKELY PROHIBITED")
             print("--------------------------------------------------------------------------------")
-            print("DYDX likely prohibits use from your country")
+            print("DYDX likely prohibits use from your country.")
         exit(1)

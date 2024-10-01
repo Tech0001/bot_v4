@@ -11,11 +11,10 @@ import json
 # Cancel all open orders
 async def cancel_all_orders(client):
     try:
-        # Fetch all open orders for the given subaccount
         orders = await client.indexer_account.account.get_subaccount_orders(
             DYDX_ADDRESS, 0, status="OPEN"
         )
-        if len(orders) > 0:
+        if orders:
             for order in orders:
                 await cancel_order(client, order["id"])
             print("Canceled all open orders.")
@@ -40,7 +39,7 @@ async def cancel_order(client, order_id):
         market_order_id.clob_pair_id = int(order["clobPairId"])
         current_block = await client.node.latest_block_height()
         good_til_block = current_block + 1 + 10
-        cancel = await client.node.cancel_order(
+        await client.node.cancel_order(
             client.wallet,
             market_order_id,
             good_til_block=good_til_block
@@ -106,34 +105,36 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
         good_til_block = current_block + 1 + 10
 
-        time_in_force = Order.TIME_IN_FORCE_UNSPECIFIED
-        order = await client.node.place_order(
-            client.wallet,
-            market.order(
-                market_order_id,
-                order_type=OrderType.MARKET,
-                side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
-                size=float(size),
-                price=float(price),
-                time_in_force=time_in_force,
-                reduce_only=reduce_only,
-                good_til_block=good_til_block
-            )
+        # Place the market order
+        order = market.order(
+            order_id=market_order_id,
+            order_type=OrderType.MARKET,
+            side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
+            size=float(size),
+            price=float(price),
+            time_in_force=Order.TimeInForce.TIME_IN_FORCE_UNSPECIFIED,
+            reduce_only=reduce_only,
+            good_til_block=good_til_block
         )
 
+        # Execute order via the node
+        transaction = await client.node.place_order(
+            wallet=client.wallet,
+            order=order
+        )
+
+        # Fetch the latest orders
         time.sleep(1.5)
         orders = await client.indexer_account.account.get_subaccount_orders(
             DYDX_ADDRESS, 0, ticker, return_latest_orders="true"
         )
 
-        # Fallback logic for missing createdAtHeight
         order_id = None
         for order in orders:
             if int(order["clientId"]) == market_order_id.client_id and int(order["clobPairId"]) == market_order_id.clob_pair_id:
                 order_id = order["id"]
                 break
 
-        # If we couldn't find order_id using clientId and clobPairId, sort by createdAt or createdAtHeight
         if not order_id:
             sorted_orders = sorted(orders, key=lambda x: x.get("createdAtHeight", x.get("createdAt", 0)), reverse=True)
             if sorted_orders:
@@ -144,7 +145,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
             print("Warning: Unable to detect latest order. Proceeding without order_id.")
             return None, None
 
-        return order, order_id
+        return transaction, order_id
 
     except Exception as e:
         print(f"Error placing market order: {e}")
