@@ -5,6 +5,8 @@ import json
 from dydx_v4_client import MAX_CLIENT_ID, Order, OrderFlags
 from dydx_v4_client.node.market import Market
 from dydx_v4_client.indexer.rest.constants import OrderType
+from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
+from dydx_v4_client.network import TESTNET
 from constants import DYDX_ADDRESS, ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
@@ -12,6 +14,7 @@ from func_public import get_candles_recent, get_markets
 from func_private import get_open_positions, get_account
 from func_bot_agent import BotAgent
 import pandas as pd
+import asyncio
 
 # Refine or remove IGNORE_ASSETS if not necessary
 IGNORE_ASSETS = ["", ""]  # Example of assets you want to ignore
@@ -32,6 +35,17 @@ async def is_open_positions(client, market):
     except Exception as e:
         print(f"Error checking open positions for {market}: {e}")
         return False
+
+# Fetch perpetual market data
+async def fetch_market_data(client, market):
+    try:
+        # Get market details for the given market
+        response = await client.markets.get_perpetual_markets(market=market)
+        market_data = response["markets"][market]
+        return market_data
+    except Exception as e:
+        print(f"Error fetching market data for {market}: {e}")
+        return None
 
 # Place market order
 async def place_market_order(client, market, side, size, price, reduce_only):
@@ -94,8 +108,8 @@ async def open_positions(client):
     # Load cointegrated pairs
     df = pd.read_csv("cointegrated_pairs.csv")
 
-    # Get markets for reference (min order size, tick size, etc.)
-    markets = await get_markets(client)
+    # Initialize IndexerClient for fetching market data
+    client = IndexerClient(TESTNET.rest_indexer)
 
     # Initialize container for BotAgent results
     bot_agents = []
@@ -125,12 +139,20 @@ async def open_positions(client):
         if base_market == "BTC-USD" or quote_market == "BTC-USD":
             print(f"Processing BTC-USD pair: {base_market} - {quote_market}")
 
+        # Fetch market data
+        try:
+            base_market_data = await fetch_market_data(client, base_market)
+            quote_market_data = await fetch_market_data(client, quote_market)
+        except Exception as e:
+            print(f"Error fetching data for {base_market} or {quote_market}: {e}")
+            continue
+
         # Get recent prices
         try:
             series_1 = await get_candles_recent(client, base_market)
             series_2 = await get_candles_recent(client, quote_market)
         except Exception as e:
-            print(f"Error fetching data for {base_market} or {quote_market}: {e}")
+            print(f"Error fetching candle data for {base_market} or {quote_market}: {e}")
             continue
 
         # Ensure data length is the same and calculate z-score
@@ -154,16 +176,16 @@ async def open_positions(client):
                     # Calculate acceptable price and size for each market
                     base_price = series_1[-1]
                     quote_price = series_2[-1]
-                    accept_base_price = format_number(float(base_price) * (1.01 if z_score < 0 else 0.99), markets["markets"][base_market]["tickSize"])
-                    accept_quote_price = format_number(float(quote_price) * (1.01 if z_score > 0 else 0.99), markets["markets"][quote_market]["tickSize"])
+                    accept_base_price = format_number(float(base_price) * (1.01 if z_score < 0 else 0.99), base_market_data["tickSize"])
+                    accept_quote_price = format_number(float(quote_price) * (1.01 if z_score > 0 else 0.99), quote_market_data["tickSize"])
                     base_quantity = 1 / base_price * USD_PER_TRADE
                     quote_quantity = 1 / quote_price * USD_PER_TRADE
-                    base_size = format_number(base_quantity, markets["markets"][base_market]["stepSize"])
-                    quote_size = format_number(quote_quantity, markets["markets"][quote_market]["stepSize"])
+                    base_size = format_number(base_quantity, base_market_data["stepSize"])
+                    quote_size = format_number(quote_quantity, quote_market_data["stepSize"])
 
                     # Ensure minimum order size
-                    base_min_order_size = 1 / float(markets["markets"][base_market]["oraclePrice"])
-                    quote_min_order_size = 1 / float(markets["markets"][quote_market]["oraclePrice"])
+                    base_min_order_size = 1 / float(base_market_data["oraclePrice"])
+                    quote_min_order_size = 1 / float(quote_market_data["oraclePrice"])
 
                     if float(base_quantity) > base_min_order_size and float(quote_quantity) > quote_min_order_size:
 
@@ -188,7 +210,7 @@ async def open_positions(client):
                             quote_side=quote_side,
                             quote_size=quote_size,
                             quote_price=accept_quote_price,
-                            accept_failsafe_base_price=format_number(float(base_price) * (0.05 if z_score < 0 else 1.7), markets["markets"][base_market]["tickSize"]),
+                            accept_failsafe_base_price=format_number(float(base_price) * (0.05 if z_score < 0 else 1.7), base_market_data["tickSize"]),
                             z_score=z_score,
                             half_life=half_life,
                             hedge_ratio=hedge_ratio
