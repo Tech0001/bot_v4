@@ -35,33 +35,17 @@ async def is_open_positions(client, market):
         print(f"Error checking open positions for {market}: {e}")
         return False
 
-# Fetch available perpetual markets
-async def fetch_available_markets(client):
-    try:
-        response = await client.markets.get_perpetual_markets()
-        markets = response.get("markets", {})
-        return markets
-    except Exception as e:
-        print(f"Error fetching available markets: {e}")
-        return {}
-
 # Fetch recent candles for a market
 async def get_candles_recent(client, market):
     try:
-        # Check if the market exists
-        available_markets = await fetch_available_markets(client)
-        if market not in available_markets:
-            print(f"Market {market} not available.")
-            return None
-
-        # Fetch candles for the available market
+        # Ensure that market exists
         response = await client.markets.get_perpetual_market_candles(
             market=market,
-            resolution="1HOUR"  # Use a more stable resolution like 1HOUR
+            resolution="1HOUR"  # Use a stable resolution such as 1HOUR
         )
         candles = response.get("candles", [])
         if candles:
-            return [float(candle["close"]) for candle in candles]  # Return closing prices as the series
+            return [float(candle["close"]) for candle in candles]  # Return closing prices as float
         else:
             print(f"No candles found for {market}")
             return None
@@ -120,8 +104,12 @@ async def open_positions(client):
 
         # Ensure data length is the same and calculate z-score
         if series_1 and series_2 and len(series_1) > 0 and len(series_1) == len(series_2):
-            spread = series_1 - (hedge_ratio * series_2)
-            z_score = calculate_zscore(spread).values.tolist()[-1]
+            try:
+                spread = [s1 - (hedge_ratio * s2) for s1, s2 in zip(series_1, series_2)]  # Calculate spread
+                z_score = calculate_zscore(spread).values.tolist()[-1]  # Ensure z_score is calculated correctly
+            except TypeError as te:
+                print(f"Error calculating spread or z-score: {te}")
+                continue
 
             # Check if the trade trigger meets the z-score threshold
             if abs(z_score) >= ZSCORE_THRESH:
