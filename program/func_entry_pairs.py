@@ -35,12 +35,29 @@ async def is_open_positions(client, market):
         print(f"Error checking open positions for {market}: {e}")
         return False
 
+# Fetch available perpetual markets
+async def fetch_available_markets(client):
+    try:
+        response = await client.markets.get_perpetual_markets()
+        markets = response.get("markets", {})
+        return markets
+    except Exception as e:
+        print(f"Error fetching available markets: {e}")
+        return {}
+
 # Fetch recent candles for a market
 async def get_candles_recent(client, market):
     try:
+        # Check if the market exists
+        available_markets = await fetch_available_markets(client)
+        if market not in available_markets:
+            print(f"Market {market} not available.")
+            return None
+
+        # Fetch candles for the available market
         response = await client.markets.get_perpetual_market_candles(
             market=market,
-            resolution="1MINUTE"  # Assuming 1-minute candles, modify as needed
+            resolution="1HOUR"  # Use a more stable resolution like 1HOUR
         )
         candles = response.get("candles", [])
         if candles:
