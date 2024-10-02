@@ -10,7 +10,6 @@ from dydx_v4_client.network import TESTNET
 from constants import DYDX_ADDRESS, ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
-from func_public import get_candles_recent, get_markets
 from func_private import get_open_positions, get_account
 from func_bot_agent import BotAgent
 import pandas as pd
@@ -36,67 +35,22 @@ async def is_open_positions(client, market):
         print(f"Error checking open positions for {market}: {e}")
         return False
 
-# Fetch perpetual market data
-async def fetch_market_data(client, market):
+# Fetch recent candles for a market
+async def get_candles_recent(client, market):
     try:
-        # Get market details for the given market
-        response = await client.markets.get_perpetual_markets(market=market)
-        market_data = response["markets"][market]
-        return market_data
+        response = await client.markets.get_perpetual_market_candles(
+            market=market,
+            resolution="1MINUTE"  # Assuming 1-minute candles, modify as needed
+        )
+        candles = response.get("candles", [])
+        if candles:
+            return [float(candle["close"]) for candle in candles]  # Return closing prices as the series
+        else:
+            print(f"No candles found for {market}")
+            return None
     except Exception as e:
-        print(f"Error fetching market data for {market}: {e}")
+        print(f"Error fetching recent candles for {market}: {e}")
         return None
-
-# Place market order
-async def place_market_order(client, market, side, size, price, reduce_only):
-    try:
-        ticker = market
-        current_block = await client.node.latest_block_height()
-        market = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
-        market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
-        good_til_block = current_block + 1 + 10
-
-        time_in_force = Order.TIME_IN_FORCE_UNSPECIFIED
-        order = await client.node.place_order(
-            client.wallet,
-            market.order(
-                market_order_id,
-                order_type=OrderType.MARKET,
-                side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
-                size=float(size),
-                price=float(price),
-                time_in_force=time_in_force,
-                reduce_only=reduce_only,
-                good_til_block=good_til_block
-            )
-        )
-
-        time.sleep(1.5)
-
-        # Retrieve orders for the given ticker
-        orders = await client.indexer_account.account.get_subaccount_orders(
-            DYDX_ADDRESS, 0, ticker, return_latest_orders="true"
-        )
-
-        # Initialize order_id as empty
-        order_id = None
-
-        # Search for the matching order in the retrieved orders
-        for order in orders:
-            if int(order["clientId"]) == market_order_id.client_id and int(order["clobPairId"]) == market_order_id.clob_pair_id:
-                order_id = order["id"]
-                break
-
-        # Check if order_id was not found
-        if order_id is None:
-            sorted_orders = sorted(orders, key=lambda x: x.get("createdAtHeight", 0), reverse=True)
-            print("Warning: Unable to detect latest order. Order details:", sorted_orders)
-            order_id = sorted_orders[0]["id"]  # Fallback: Use the first order from sorted list
-
-        return order, order_id
-    except Exception as e:
-        print(f"Error placing market order: {e}")
-        return None, None
 
 # Open positions function - manage finding triggers for trade entry
 async def open_positions(client):
@@ -139,24 +93,16 @@ async def open_positions(client):
         if base_market == "BTC-USD" or quote_market == "BTC-USD":
             print(f"Processing BTC-USD pair: {base_market} - {quote_market}")
 
-        # Fetch market data
-        try:
-            base_market_data = await fetch_market_data(client, base_market)
-            quote_market_data = await fetch_market_data(client, quote_market)
-        except Exception as e:
-            print(f"Error fetching data for {base_market} or {quote_market}: {e}")
-            continue
-
         # Get recent prices
         try:
             series_1 = await get_candles_recent(client, base_market)
             series_2 = await get_candles_recent(client, quote_market)
         except Exception as e:
-            print(f"Error fetching candle data for {base_market} or {quote_market}: {e}")
+            print(f"Error fetching data for {base_market} or {quote_market}: {e}")
             continue
 
         # Ensure data length is the same and calculate z-score
-        if len(series_1) > 0 and len(series_1) == len(series_2):
+        if series_1 and series_2 and len(series_1) > 0 and len(series_1) == len(series_2):
             spread = series_1 - (hedge_ratio * series_2)
             z_score = calculate_zscore(spread).values.tolist()[-1]
 
@@ -172,6 +118,14 @@ async def open_positions(client):
                     # Determine trade sides
                     base_side = "BUY" if z_score < 0 else "SELL"
                     quote_side = "BUY" if z_score > 0 else "SELL"
+
+                    # Fetch market data directly for size and price calculations
+                    try:
+                        base_market_data = (await client.markets.get_perpetual_markets(market=base_market))["markets"][base_market]
+                        quote_market_data = (await client.markets.get_perpetual_markets(market=quote_market))["markets"][quote_market]
+                    except Exception as e:
+                        print(f"Error fetching market data for {base_market} or {quote_market}: {e}")
+                        continue
 
                     # Calculate acceptable price and size for each market
                     base_price = series_1[-1]
