@@ -50,7 +50,8 @@ async def get_candles_recent(client, market):
             print(f"No candles found for {market}")
             return None
     except Exception as e:
-        print(f"Error fetching recent candles for {market}: {e}")
+        if "400" in str(e):
+            print(f"Market {market} is not valid on dYdX testnet.")
         return None
 
 # Open positions function - manage finding triggers for trade entry
