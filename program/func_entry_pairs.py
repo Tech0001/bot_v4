@@ -18,11 +18,8 @@ ZSCORE_THRESH = 2  # Example threshold for Z-Score entry
 USD_PER_TRADE = 100  # Adjust per your trading size
 USD_MIN_COLLATERAL = 50  # Minimum collateral required for a trade
 
-# Initialize IndexerClient for fetching market data and positions
-indexer_client = IndexerClient(
-    node_url="https://testnet.dydx.exchange",  # Ensure correct node URL
-    network_id="testnet"  # Example for testnet
-)
+# Initialize IndexerClient without 'node_url'
+indexer_client = IndexerClient()  # No node_url parameter is required here
 
 # Check if a position is open for a given market
 async def is_open_positions(client, market):
