@@ -5,7 +5,7 @@ from dydx_v4_client import MAX_CLIENT_ID  # Import MAX_CLIENT_ID from dydx_v4_cl
 MARKET_DATA_MODE = "TESTNET"  # Options: "TESTNET" or "MAINNET"
 
 # Close all open positions and orders
-ABORT_ALL_POSITIONS = False
+ABORT_ALL_POSITIONS = True
 
 # Find Cointegrated Pairs
 FIND_COINTEGRATED = True
@@ -23,8 +23,8 @@ RESOLUTION = "1HOUR"
 WINDOW = 21  # Rolling window for cointegration
 
 # Thresholds - Opening
-MAX_HALF_LIFE = 9.69  # Maximum half-life for a cointegrated pair
-ZSCORE_THRESH = 1.4  # Z-score threshold for opening trades
+MAX_HALF_LIFE = 10  # Maximum half-life for a cointegrated pair
+ZSCORE_THRESH = 1.5  # Z-score threshold for opening trades
 USD_PER_TRADE = 50  # Amount in USD per trade
 USD_MIN_COLLATERAL = 150  # Minimum collateral to ensure sufficient funds
 
