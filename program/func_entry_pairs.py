@@ -2,21 +2,27 @@
 import random
 import time
 import json
-from dydx_v4_client import MAX_CLIENT_ID, Order, OrderFlags
+import pandas as pd
+import asyncio
 from dydx_v4_client.node.market import Market
 from dydx_v4_client.indexer.rest.constants import OrderType
 from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
-from dydx_v4_client.network import TESTNET
-from constants import DYDX_ADDRESS, ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
-from func_private import get_open_positions, get_account
+from func_private import get_open_positions
 from func_bot_agent import BotAgent
-import pandas as pd
-import asyncio
 
-# Refine or remove IGNORE_ASSETS if not necessary
-IGNORE_ASSETS = ["", ""]  # Example of assets you want to ignore
+# Constants (update these as needed for your setup)
+IGNORE_ASSETS = [""]  # Add assets to ignore if necessary
+ZSCORE_THRESH = 2  # Example threshold for Z-Score entry
+USD_PER_TRADE = 100  # Adjust per your trading size
+USD_MIN_COLLATERAL = 50  # Minimum collateral required for a trade
+
+# Initialize IndexerClient for fetching market data and positions
+indexer_client = IndexerClient(
+    node_url="https://testnet.dydx.exchange",  # Ensure correct node URL
+    network_id="testnet"  # Example for testnet
+)
 
 # Check if a position is open for a given market
 async def is_open_positions(client, market):
@@ -38,8 +44,7 @@ async def is_open_positions(client, market):
 # Fetch recent candles for a market
 async def get_candles_recent(client, market):
     try:
-        # Ensure that market exists
-        response = await client.markets.get_perpetual_market_candles(
+        response = await client.get_candles(
             market=market,
             resolution="1HOUR"  # Use a stable resolution such as 1HOUR
         )
@@ -50,8 +55,7 @@ async def get_candles_recent(client, market):
             print(f"No candles found for {market}")
             return None
     except Exception as e:
-        if "400" in str(e):
-            print(f"Market {market} is not valid on dYdX testnet.")
+        print(f"Error fetching candles for {market}: {e}")
         return None
 
 # Open positions function - manage finding triggers for trade entry
@@ -63,9 +67,6 @@ async def open_positions(client):
 
     # Load cointegrated pairs
     df = pd.read_csv("cointegrated_pairs.csv")
-
-    # Initialize IndexerClient for fetching market data
-    client = IndexerClient(TESTNET.rest_indexer)
 
     # Initialize container for BotAgent results
     bot_agents = []
@@ -83,7 +84,7 @@ async def open_positions(client):
     for index, row in df.iterrows():
         base_market = row["base_market"]
         quote_market = row["quote_market"]
-        hedge_ratio = row["hedge_ratio"]
+        hedge_ratio = float(row["hedge_ratio"])  # Ensure hedge_ratio is converted to float
         half_life = row["half_life"]
 
         # Skip ignored assets
@@ -106,7 +107,8 @@ async def open_positions(client):
         # Ensure data length is the same and calculate z-score
         if series_1 and series_2 and len(series_1) > 0 and len(series_1) == len(series_2):
             try:
-                spread = [s1 - (hedge_ratio * s2) for s1, s2 in zip(series_1, series_2)]  # Calculate spread
+                # Ensure values in series_1 and series_2 are floats before calculating spread
+                spread = [float(s1) - (hedge_ratio * float(s2)) for s1, s2 in zip(series_1, series_2)]  # Calculate spread
                 z_score = calculate_zscore(spread).values.tolist()[-1]  # Ensure z_score is calculated correctly
             except TypeError as te:
                 print(f"Error calculating spread or z-score: {te}")
@@ -116,8 +118,8 @@ async def open_positions(client):
             if abs(z_score) >= ZSCORE_THRESH:
 
                 # Ensure that positions are not already open for the pair
-                is_base_open = await is_open_positions(client, base_market)
-                is_quote_open = await is_open_positions(client, quote_market)
+                is_base_open = await is_open_positions(indexer_client, base_market)
+                is_quote_open = await is_open_positions(indexer_client, quote_market)
 
                 if not is_base_open and not is_quote_open:
 
@@ -127,8 +129,8 @@ async def open_positions(client):
 
                     # Fetch market data directly for size and price calculations
                     try:
-                        base_market_data = (await client.markets.get_perpetual_markets(market=base_market))["markets"][base_market]
-                        quote_market_data = (await client.markets.get_perpetual_markets(market=quote_market))["markets"][quote_market]
+                        base_market_data = await client.get_market(market=base_market)
+                        quote_market_data = await client.get_market(market=quote_market)
                     except Exception as e:
                         print(f"Error fetching market data for {base_market} or {quote_market}: {e}")
                         continue
@@ -149,16 +151,6 @@ async def open_positions(client):
 
                     if float(base_quantity) > base_min_order_size and float(quote_quantity) > quote_min_order_size:
 
-                        # Check account balance
-                        account = await get_account(client)
-                        free_collateral = float(account["freeCollateral"])
-                        print(f"Balance: {free_collateral}, Minimum Required: {USD_MIN_COLLATERAL}")
-
-                        # Guard: Ensure sufficient collateral
-                        if free_collateral < USD_MIN_COLLATERAL:
-                            print("Insufficient collateral. Skipping trade.")
-                            continue
-
                         # Create BotAgent and open trades
                         bot_agent = BotAgent(
                             client,
@@ -170,7 +162,6 @@ async def open_positions(client):
                             quote_side=quote_side,
                             quote_size=quote_size,
                             quote_price=accept_quote_price,
-                            accept_failsafe_base_price=format_number(float(base_price) * (0.05 if z_score < 0 else 1.7), base_market_data["tickSize"]),
                             z_score=z_score,
                             half_life=half_life,
                             hedge_ratio=hedge_ratio
@@ -189,10 +180,6 @@ async def open_positions(client):
                                 print(f"Order ID: {bot_open_dict['id']}")
                             if "status" in bot_open_dict:
                                 print(f"Order Status: {bot_open_dict['status']}")
-
-                        # Handle failure in opening trades
-                        if bot_open_dict == "failed":
-                            continue
 
                         # Confirm the trade is live
                         if bot_open_dict.get("pair_status") == "LIVE":
