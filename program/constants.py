@@ -8,7 +8,7 @@ MARKET_DATA_MODE = "TESTNET"  # Options: "TESTNET" or "MAINNET"
 ABORT_ALL_POSITIONS = False
 
 # Find Cointegrated Pairs
-FIND_COINTEGRATED = True
+FIND_COINTEGRATED = False
 
 # Manage Exits
 MANAGE_EXITS = True
@@ -20,11 +20,11 @@ PLACE_TRADES = True
 RESOLUTION = "1HOUR"
 
 # Stats Window
-WINDOW = 20  # Rolling window for cointegration
+WINDOW = 21  # Rolling window for cointegration
 
 # Thresholds - Opening
-MAX_HALF_LIFE = 24  # Maximum half-life for a cointegrated pair
-ZSCORE_THRESH = 1.49  # Z-score threshold for opening trades
+MAX_HALF_LIFE = 20  # Maximum half-life for a cointegrated pair
+ZSCORE_THRESH = 1.45  # Z-score threshold for opening trades
 USD_PER_TRADE = 10  # Amount in USD per trade
 USD_MIN_COLLATERAL = 150  # Minimum collateral to ensure sufficient funds
 
