@@ -19,7 +19,6 @@ def half_life_mean_reversion(series):
   half_life = -np.log(2) / slope
   return half_life
 
-
 # Calculate ZScore
 def calculate_zscore(spread):
   spread_series = pd.Series(spread)
@@ -29,29 +28,33 @@ def calculate_zscore(spread):
   zscore = (x - mean) / std
   return zscore
 
-
 # Calculate Cointegration
 def calculate_cointegration(series_1, series_2):
   series_1 = np.array(series_1).astype(np.float64)
   series_2 = np.array(series_2).astype(np.float64)
   coint_flag = 0
-  coint_res = coint(series_1, series_2)
-  coint_t = coint_res[0]
-  p_value = coint_res[1]
-  critical_value = coint_res[2][1]
+  try:
+    coint_res = coint(series_1, series_2)
+    coint_t = coint_res[0]
+    p_value = coint_res[1]
+    critical_value = coint_res[2][1]
 
-  # Better way to fit data vs older version
-  series_2_with_constant = sm.add_constant(series_2) 
-  model = sm.OLS(series_1, series_2_with_constant).fit()
-  hedge_ratio = model.params[1]
-  intercept = model.params[0]
+    # Better way to fit data vs older version
+    series_2_with_constant = sm.add_constant(series_2) 
+    model = sm.OLS(series_1, series_2_with_constant).fit()
+    hedge_ratio = model.params[1]
+    intercept = model.params[0]
 
-  spread = series_1 - (series_2 * hedge_ratio) - intercept
-  half_life = half_life_mean_reversion(spread)
-  t_check = coint_t < critical_value
-  coint_flag = 1 if p_value < 0.05 and t_check else 0
+    spread = series_1 - (series_2 * hedge_ratio) - intercept
+    half_life = half_life_mean_reversion(spread)
+    t_check = coint_t < critical_value
+    coint_flag = 1 if p_value < 0.05 and t_check else 0
+  except Exception as e:
+    print(f"Error in cointegration calculation: {e}")
+    hedge_ratio = None
+    half_life = None
+
   return coint_flag, hedge_ratio, half_life
-
 
 # Store Cointegration Results
 def store_cointegration_results(df_market_prices):
@@ -66,14 +69,14 @@ def store_cointegration_results(df_market_prices):
     series_1 = df_market_prices[base_market].values.astype(np.float64).tolist()
 
     # Get Quote Pair
-    for quote_market in markets[index +1:]:
+    for quote_market in markets[index + 1:]:
       series_2 = df_market_prices[quote_market].values.astype(np.float64).tolist()
 
       # Check cointegration
       coint_flag, hedge_ratio, half_life = calculate_cointegration(series_1, series_2)
 
       # Log pair
-      if coint_flag == 1 and half_life <= MAX_HALF_LIFE and half_life > 0:
+      if coint_flag == 1 and half_life is not None and half_life <= MAX_HALF_LIFE and half_life > 0:
         criteria_met_pairs.append({
           "base_market": base_market,
           "quote_market": quote_market,
@@ -89,9 +92,3 @@ def store_cointegration_results(df_market_prices):
   # Return result
   print("Cointegrated pairs successfully saved")
   return "saved"
-
-
-
-
-
-
