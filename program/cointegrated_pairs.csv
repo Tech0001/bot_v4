@@ -1,4 +1,4 @@
-,base_market,quote_market,hedge_ratio,half_life,z_score
+,base_market,quote_market,hedge_ratio,half_life
 ATOM-USD,MATIC-USD,1.2,4.4,1.3
 MATIC-USD,COMP-USD,0.8,11.9,1.8
 COMP-USD,XTZ-USD,1.1,7.0,1.5
