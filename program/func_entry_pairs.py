@@ -18,13 +18,10 @@ from pprint import pprint
 
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
 
-async def place_market_order_v4(client, wallet, market_id, side, size):
+async def place_market_order_v4(node, indexer, wallet, market_id, side, size):
     """
     Updated function to place a market order using the v4 structure.
     """
-    node = await NodeClient.connect(client.node)
-    indexer = IndexerClient(client.rest_indexer)
-
     market = Market((await indexer.markets.get_perpetual_markets(market_id))["markets"][market_id])
 
     order_id = market.order_id(wallet.address, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
@@ -46,12 +43,10 @@ async def place_market_order_v4(client, wallet, market_id, side, size):
     wallet.sequence += 1
     return transaction
 
-async def get_account_balance_v4(client):
+async def get_account_balance_v4(indexer):
     """
     Fetch account balance using the v4 API structure.
     """
-    indexer = IndexerClient(client.rest_indexer)
-
     # Fetch account details using the IndexerClient
     account = await indexer.accounts.get_account(DYDX_ADDRESS)
     free_collateral = float(account["freeCollateral"])
@@ -67,6 +62,10 @@ async def open_positions(client):
 
     # Load cointegrated pairs
     df = pd.read_csv("cointegrated_pairs.csv")
+
+    # Initialize NodeClient and IndexerClient
+    node = await NodeClient.connect(client.node)
+    indexer = IndexerClient(client.rest_indexer)
 
     # Get markets for reference (min order size, tick size, etc.)
     markets = await get_markets(client)
@@ -157,7 +156,7 @@ async def open_positions(client):
                     if check_base and check_quote:
 
                         # Fetch account balance using the updated function
-                        free_collateral = await get_account_balance_v4(client)
+                        free_collateral = await get_account_balance_v4(indexer)
                         print(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
 
                         # Guard: Ensure collateral
@@ -165,11 +164,12 @@ async def open_positions(client):
                             break
 
                         # Wallet initialization (from mnemonic)
-                        wallet = await Wallet.from_mnemonic(client, SECRET_PHRASE, DYDX_ADDRESS)
+                        wallet = await Wallet.from_mnemonic(node, SECRET_PHRASE, DYDX_ADDRESS)
 
                         # Place Base Market Order
                         base_order_transaction = await place_market_order_v4(
-                            client,
+                            node,
+                            indexer,
                             wallet,
                             market_id=base_market,
                             side=base_side,
@@ -178,7 +178,8 @@ async def open_positions(client):
 
                         # Place Quote Market Order
                         quote_order_transaction = await place_market_order_v4(
-                            client,
+                            node,
+                            indexer,
                             wallet,
                             market_id=quote_market,
                             side=quote_side,
