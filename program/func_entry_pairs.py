@@ -2,7 +2,7 @@ from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL, DYDX_ADD
 from func_utils import format_number
 from func_cointegration import calculate_zscore
 from func_public import get_candles_recent, get_markets
-from func_private import is_open_positions, get_account
+from func_private import is_open_positions
 from func_bot_agent import BotAgent
 import pandas as pd
 import json
@@ -16,7 +16,7 @@ import random
 
 from pprint import pprint
 
-IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"] # Ignore these assets which are not trading on testnet
+IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
 
 async def place_market_order_v4(client, wallet, market_id, side, size):
     """
@@ -46,6 +46,17 @@ async def place_market_order_v4(client, wallet, market_id, side, size):
     wallet.sequence += 1
     return transaction
 
+async def get_account_balance_v4(client):
+    """
+    Fetch account balance using the v4 API structure.
+    """
+    indexer = IndexerClient(client.rest_indexer)
+
+    # Fetch account details using the IndexerClient
+    account = await indexer.accounts.get_account(DYDX_ADDRESS)
+    free_collateral = float(account["freeCollateral"])
+    return free_collateral
+
 # Open positions
 async def open_positions(client):
 
@@ -71,7 +82,7 @@ async def open_positions(client):
             bot_agents.append(p)
     except:
         bot_agents = []
-  
+
     # Find ZScore triggers
     for index, row in df.iterrows():
 
@@ -145,9 +156,8 @@ async def open_positions(client):
                     # If checks pass, place trades
                     if check_base and check_quote:
 
-                        # Check account balance
-                        account = await get_account(client)
-                        free_collateral = float(account["freeCollateral"])
+                        # Fetch account balance using the updated function
+                        free_collateral = await get_account_balance_v4(client)
                         print(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
 
                         # Guard: Ensure collateral
