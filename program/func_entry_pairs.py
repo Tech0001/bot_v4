@@ -12,6 +12,7 @@ from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
 from dydx_v4_client.node.market import Market
 from dydx_v4_client import MAX_CLIENT_ID, OrderFlags
 from dydx_v4_client.indexer.rest.constants import OrderType
+from dydx_v4_client.network import TESTNET, MAINNET  # For defining the correct network and chain ID
 import random
 
 from pprint import pprint
@@ -53,8 +54,7 @@ async def get_account_balance_v4(indexer):
     return free_collateral
 
 # Open positions
-async def open_positions(client):
-
+async def open_positions(network):
     """
     Manage finding triggers for trade entry
     Store trades for managing later on for exit function
@@ -63,12 +63,12 @@ async def open_positions(client):
     # Load cointegrated pairs
     df = pd.read_csv("cointegrated_pairs.csv")
 
-    # Initialize NodeClient and IndexerClient
-    node = await NodeClient.connect(client.node)
-    indexer = IndexerClient(client.rest_indexer)
+    # Initialize NodeClient and IndexerClient with the correct chain ID for the network
+    node = await NodeClient.connect(network.node, chain_id=network.chain_id)
+    indexer = IndexerClient(network.rest_indexer)
 
     # Get markets for reference (min order size, tick size, etc.)
-    markets = await get_markets(client)
+    markets = await get_markets(network)
 
     # Initialize container for BotAgent results
     bot_agents = []
@@ -97,8 +97,8 @@ async def open_positions(client):
 
         # Get prices
         try:
-            series_1 = await get_candles_recent(client, base_market)
-            series_2 = await get_candles_recent(client, quote_market)
+            series_1 = await get_candles_recent(network, base_market)
+            series_2 = await get_candles_recent(network, quote_market)
         except Exception as e:
             print(e)
             continue
@@ -112,8 +112,8 @@ async def open_positions(client):
             if abs(z_score) >= ZSCORE_THRESH:
 
                 # Ensure like-for-like not already open (diversify trading)
-                is_base_open = await is_open_positions(client, base_market)
-                is_quote_open = await is_open_positions(client, quote_market)
+                is_base_open = await is_open_positions(network, base_market)
+                is_quote_open = await is_open_positions(network, quote_market)
 
                 # Place trade
                 if not is_base_open and not is_quote_open:
@@ -192,7 +192,7 @@ async def open_positions(client):
 
                         # Create Bot Agent
                         bot_agent = BotAgent(
-                            client,
+                            network,
                             market_1=base_market,
                             market_2=quote_market,
                             base_side=base_side,
