@@ -1,163 +1,226 @@
-import asyncio
+# Imports
 import random
 import time
 import json
-import logging
-from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
-from dydx_v4_client.network import TESTNET  # Or replace with MAINNET for production
+from dydx_v4_client import MAX_CLIENT_ID, Order, OrderFlags
+from dydx_v4_client.node.market import Market
+from dydx_v4_client.indexer.rest.constants import OrderType
 from constants import DYDX_ADDRESS, ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
-from func_public import get_candles_recent
+from func_public import get_candles_recent, get_markets
 from func_private import get_open_positions, get_account
 from func_bot_agent import BotAgent
 import pandas as pd
 
-# Set up logging for better debug tracking
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Initialize IndexerClient for testnet or mainnet
-client = IndexerClient(TESTNET.rest_indexer)  # Replace TESTNET with your mainnet if needed
-
-# Define test address (replace with your real address)
-test_address = DYDX_ADDRESS
-
 # Refine or remove IGNORE_ASSETS if not necessary
 IGNORE_ASSETS = ["", ""]  # Example of assets you want to ignore
-
-# Fetch market data using the correct method
-async def fetch_market_data(client, market):
-    try:
-        # Fetch all perpetual markets and filter for the specific one
-        response = await client.getPerpetualMarkets()
-        # Filter the specific market you are interested in
-        return next((m for m in response["markets"] if m["ticker"] == market), None)
-    except Exception as e:
-        logger.error(f"Error fetching market data for {market}: {e}")
-        return None
 
 # Check if a position is open for a given market
 async def is_open_positions(client, market):
     try:
         open_positions = await get_open_positions(client)
+
+        # Ensure open_positions is a list or dictionary-like structure before processing
         if not isinstance(open_positions, (list, dict)):
             raise ValueError(f"Unexpected data format for open positions: {open_positions}")
-        
-        return any(position.get("market") == market for position in open_positions)
+
+        for position in open_positions:
+            if isinstance(position, dict) and position.get("market") == market:
+                return True
+        return False
     except Exception as e:
-        logger.error(f"Error checking open positions for {market}: {e}")
+        print(f"Error checking open positions for {market}: {e}")
         return False
 
 # Place market order
 async def place_market_order(client, market, side, size, price, reduce_only):
     try:
-        market_data = await fetch_market_data(client, market)
-        if not market_data:
-            logger.warning(f"Market data for {market} not found. Skipping order.")
-            return
-        
-        order = {
-            "market": market,
-            "side": side,
-            "size": size,
-            "price": price,
-            "reduce_only": reduce_only
-        }
-        logger.info(f"Placing order: {order}")
-        
-        await client.indexer.place_order(order)
-    except Exception as e:
-        logger.error(f"Error placing market order for {market}: {e}")
+        ticker = market
+        current_block = await client.node.latest_block_height()
+        market = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
+        market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
+        good_til_block = current_block + 1 + 10
 
-# Open positions function - optimized for concurrency
+        time_in_force = Order.TIME_IN_FORCE_UNSPECIFIED
+        order = await client.node.place_order(
+            client.wallet,
+            market.order(
+                market_order_id,
+                order_type=OrderType.MARKET,
+                side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
+                size=float(size),
+                price=float(price),
+                time_in_force=time_in_force,
+                reduce_only=reduce_only,
+                good_til_block=good_til_block
+            )
+        )
+
+        time.sleep(1.5)
+
+        # Retrieve orders for the given ticker
+        orders = await client.indexer_account.account.get_subaccount_orders(
+            DYDX_ADDRESS, 0, ticker, return_latest_orders="true"
+        )
+
+        # Initialize order_id as empty
+        order_id = None
+
+        # Search for the matching order in the retrieved orders
+        for order in orders:
+            if int(order["clientId"]) == market_order_id.client_id and int(order["clobPairId"]) == market_order_id.clob_pair_id:
+                order_id = order["id"]
+                break
+
+        # Check if order_id was not found
+        if order_id is None:
+            sorted_orders = sorted(orders, key=lambda x: x.get("createdAtHeight", 0), reverse=True)
+            print("Warning: Unable to detect latest order. Order details:", sorted_orders)
+            order_id = sorted_orders[0]["id"]  # Fallback: Use the first order from sorted list
+
+        return order, order_id
+    except Exception as e:
+        print(f"Error placing market order: {e}")
+        return None, None
+
+# Open positions
 async def open_positions(client):
+    """
+    Manage finding triggers for trade entry
+    Store trades for managing later on in the exit function
+    """
+
     # Load cointegrated pairs
     df = pd.read_csv("cointegrated_pairs.csv")
-    tasks = []
 
-    # Filter out ignored assets and process the pairs
-    for _, row in df.iterrows():
-        base_market, quote_market = row["base_market"], row["quote_market"]
-        hedge_ratio, half_life = float(row["hedge_ratio"]), row["half_life"]
+    # Get markets for reference (min order size, tick size, etc.)
+    markets = await get_markets(client)
 
+    # Initialize container for BotAgent results
+    bot_agents = []
+
+    # Open JSON file and load existing bot agents
+    try:
+        with open("bot_agents.json") as open_positions_file:
+            open_positions_dict = json.load(open_positions_file)
+            for p in open_positions_dict:
+                bot_agents.append(p)
+    except FileNotFoundError:
+        bot_agents = []
+
+    # Iterate through cointegrated pairs
+    for index, row in df.iterrows():
+        base_market = row["base_market"]
+        quote_market = row["quote_market"]
+        hedge_ratio = row["hedge_ratio"]
+        half_life = row["half_life"]
+
+        # Skip ignored assets
         if base_market in IGNORE_ASSETS or quote_market in IGNORE_ASSETS:
-            logger.info(f"Skipping ignored asset pair: {base_market} - {quote_market}")
+            print(f"Skipping ignored asset pair: {base_market} - {quote_market}")
             continue
 
-        tasks.append(process_market_pair(client, base_market, quote_market, hedge_ratio, half_life))
+        # Log to ensure BTC-USD is being processed
+        if base_market == "BTC-USD" or quote_market == "BTC-USD":
+            print(f"Processing BTC-USD pair: {base_market} - {quote_market}")
 
-    # Execute all market pair tasks concurrently
-    await asyncio.gather(*tasks)
-    logger.info("All market pairs processed.")
-
-# Helper function to process individual market pairs
-async def process_market_pair(client, base_market, quote_market, hedge_ratio, half_life):
-    logger.info(f"Processing {base_market} - {quote_market} pair")
-
-    try:
-        # Fetch recent prices concurrently for both markets
-        series_1, series_2 = await asyncio.gather(
-            get_candles_recent(client, base_market),
-            get_candles_recent(client, quote_market)
-        )
-    except Exception as e:
-        logger.error(f"Error fetching data for {base_market} or {quote_market}: {e}")
-        return
-
-    if series_1 and series_2 and len(series_1) == len(series_2):
+        # Get recent prices
         try:
-            spread = [float(s1) - (hedge_ratio * float(s2)) for s1, s2 in zip(series_1, series_2)]
-            z_score = calculate_zscore(spread).iloc[-1] if isinstance(calculate_zscore(spread), pd.Series) else None
-
-            if z_score is not None and abs(z_score) >= ZSCORE_THRESH:
-                await execute_trade(client, base_market, quote_market, z_score, hedge_ratio)
+            series_1 = await get_candles_recent(client, base_market)
+            series_2 = await get_candles_recent(client, quote_market)
         except Exception as e:
-            logger.error(f"Error calculating spread or z-score for {base_market} - {quote_market}: {e}")
+            print(f"Error fetching data for {base_market} or {quote_market}: {e}")
+            continue
 
-# Execute the trade based on z-score
-async def execute_trade(client, base_market, quote_market, z_score, hedge_ratio):
-    base_side = "BUY" if z_score < 0 else "SELL"
-    quote_side = "BUY" if z_score > 0 else "SELL"
+        # Ensure data length is the same and calculate z-score
+        if len(series_1) > 0 and len(series_1) == len(series_2):
+            spread = series_1 - (hedge_ratio * series_2)
+            z_score = calculate_zscore(spread).values.tolist()[-1]
 
-    try:
-        # Fetch market data for trade execution
-        base_market_data, quote_market_data = await asyncio.gather(
-            fetch_market_data(client, base_market),
-            fetch_market_data(client, quote_market)
-        )
+            # Check if the trade trigger meets the z-score threshold
+            if abs(z_score) >= ZSCORE_THRESH:
 
-        if not base_market_data or not quote_market_data:
-            logger.warning(f"Skipping trade. Market data not available for {base_market} or {quote_market}.")
-            return
+                # Ensure that positions are not already open for the pair
+                is_base_open = await is_open_positions(client, base_market)
+                is_quote_open = await is_open_positions(client, quote_market)
 
-        base_price = float(base_market_data["price"])
-        quote_price = float(quote_market_data["price"])
-        base_quantity = 1 / base_price * USD_PER_TRADE
-        quote_quantity = 1 / quote_price * USD_PER_TRADE
+                if not is_base_open and not is_quote_open:
 
-        # Place the orders
-        await asyncio.gather(
-            place_market_order(client, base_market, base_side, base_quantity, base_price, False),
-            place_market_order(client, quote_market, quote_side, quote_quantity, quote_price, False)
-        )
+                    # Determine trade sides
+                    base_side = "BUY" if z_score < 0 else "SELL"
+                    quote_side = "BUY" if z_score > 0 else "SELL"
 
-        logger.info(f"Trade executed for {base_market} - {quote_market}. Z-Score: {z_score}")
-    except Exception as e:
-        logger.error(f"Error executing trade for {base_market} - {quote_market}: {e}")
+                    # Calculate acceptable price and size for each market
+                    base_price = series_1[-1]
+                    quote_price = series_2[-1]
+                    accept_base_price = format_number(float(base_price) * (1.01 if z_score < 0 else 0.99), markets["markets"][base_market]["tickSize"])
+                    accept_quote_price = format_number(float(quote_price) * (1.01 if z_score > 0 else 0.99), markets["markets"][quote_market]["tickSize"])
+                    base_quantity = 1 / base_price * USD_PER_TRADE
+                    quote_quantity = 1 / quote_price * USD_PER_TRADE
+                    base_size = format_number(base_quantity, markets["markets"][base_market]["stepSize"])
+                    quote_size = format_number(quote_quantity, markets["markets"][quote_market]["stepSize"])
 
-# Main function to fetch account data
-async def test_account():
-    try:
-        response = await client.account.getSubaccounts(test_address)
-        subaccounts = response["subaccounts"]
-        logger.info(f"Subaccounts: {subaccounts}")
-    except Exception as e:
-        logger.error(f"Error: {e}")
+                    # Ensure minimum order size
+                    base_min_order_size = 1 / float(markets["markets"][base_market]["oraclePrice"])
+                    quote_min_order_size = 1 / float(markets["markets"][quote_market]["oraclePrice"])
 
-# Run the account fetch and open positions in parallel
-async def main():
-    await asyncio.gather(test_account(), open_positions(client))
+                    if float(base_quantity) > base_min_order_size and float(quote_quantity) > quote_min_order_size:
 
-# Start the asyncio event loop
-asyncio.run(main())
+                        # Check account balance
+                        account = await get_account(client)
+                        free_collateral = float(account["freeCollateral"])
+                        print(f"Balance: {free_collateral}, Minimum Required: {USD_MIN_COLLATERAL}")
+
+                        # Guard: Ensure sufficient collateral
+                        if free_collateral < USD_MIN_COLLATERAL:
+                            print("Insufficient collateral. Skipping trade.")
+                            continue
+
+                        # Create BotAgent and open trades
+                        bot_agent = BotAgent(
+                            client,
+                            market_1=base_market,
+                            market_2=quote_market,
+                            base_side=base_side,
+                            base_size=base_size,
+                            base_price=accept_base_price,
+                            quote_side=quote_side,
+                            quote_size=quote_size,
+                            quote_price=accept_quote_price,
+                            accept_failsafe_base_price=format_number(float(base_price) * (0.05 if z_score < 0 else 1.7), markets["markets"][base_market]["tickSize"]),
+                            z_score=z_score,
+                            half_life=half_life,
+                            hedge_ratio=hedge_ratio
+                        )
+
+                        # Attempt to open trades
+                        bot_open_dict = await bot_agent.open_trades()
+
+                        # Check for 'createdAtHeight' in the response
+                        if "createdAtHeight" in bot_open_dict:
+                            created_at_height = bot_open_dict["createdAtHeight"]
+                            print(f"Order created at height: {created_at_height}")
+                        else:
+                            print("Notice: 'createdAtHeight' not found in the order response. Proceeding without it.")
+                            if "id" in bot_open_dict:
+                                print(f"Order ID: {bot_open_dict['id']}")
+                            if "status" in bot_open_dict:
+                                print(f"Order Status: {bot_open_dict['status']}")
+
+                        # Handle failure in opening trades
+                        if bot_open_dict == "failed":
+                            continue
+
+                        # Confirm the trade is live
+                        if bot_open_dict.get("pair_status") == "LIVE":
+                            bot_agents.append(bot_open_dict)
+
+                            # Save the trade to JSON file
+                            with open("bot_agents.json", "w") as f:
+                                json.dump(bot_agents, f)
+
+                            print(f"Trade status: Live for {base_market} - {quote_market}")
+
+    # Save agents to the file
+    print("Success: All open trades checked")
