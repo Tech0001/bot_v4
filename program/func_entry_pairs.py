@@ -12,7 +12,7 @@ from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
 from dydx_v4_client.node.market import Market
 from dydx_v4_client import MAX_CLIENT_ID, OrderFlags
 from dydx_v4_client.indexer.rest.constants import OrderType
-from dydx_v4_client.network import TESTNET  # Only importing TESTNET for now, not MAINNET
+from dydx_v4_client.network import TESTNET  # Correctly using the TESTNET network configuration
 import random
 
 from pprint import pprint
@@ -64,8 +64,8 @@ async def open_positions(client):
     # Load cointegrated pairs
     df = pd.read_csv("cointegrated_pairs.csv")
 
-    # Initialize NodeClient and IndexerClient with the correct chain ID for testnet
-    node = await NodeClient.connect(TESTNET.node, chain_id="dydx-testnet-4")
+    # Initialize NodeClient and IndexerClient for TESTNET
+    node = await NodeClient.connect(TESTNET.node)  # No chain_id here, it's part of TESTNET
     indexer = IndexerClient(TESTNET.rest_indexer)
 
     # Get markets for reference (min order size, tick size, etc.)
