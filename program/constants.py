@@ -23,8 +23,8 @@ RESOLUTION = "1HOUR"
 WINDOW = 21  # Rolling window for cointegration
 
 # Thresholds - Opening
-MAX_HALF_LIFE = 20  # Maximum half-life for a cointegrated pair
-ZSCORE_THRESH = 1.75  # Z-score threshold for opening trades
+MAX_HALF_LIFE = 1.00  # Maximum half-life for a cointegrated pair
+ZSCORE_THRESH = 1.5  # Z-score threshold for opening trades
 USD_PER_TRADE = 25  # Amount in USD per trade
 USD_MIN_COLLATERAL = 150  # Minimum collateral to ensure sufficient funds
 
