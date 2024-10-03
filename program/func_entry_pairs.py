@@ -22,13 +22,12 @@ async def place_market_order_v4(node_client, wallet, market_id, side, size):
     """
     Updated function to place a market order using the v4 structure.
     """
-    # Ensure the node client is used to connect and manage orders
-    node = await NodeClient.connect(node_client)  # Using correct node client
+    node = await NodeClient.connect(node_client)  # Connect to node with client passed correctly
     
-    # Initialize indexer with correct client object
+    # Initialize the indexer client properly
     indexer = IndexerClient(node_client)
 
-    # Ensure market ID is correctly retrieved from indexer
+    # Fetch market data for the given market ID
     market = Market((await indexer.markets.get_perpetual_markets(market_id))["markets"][market_id])
 
     # Generate the order ID and set the block height for the order
@@ -48,7 +47,7 @@ async def place_market_order_v4(node_client, wallet, market_id, side, size):
         good_til_block=current_block + 10,
     )
 
-    # Place the market order via the node
+    # Place the market order
     transaction = await node.place_order(wallet=wallet, order=new_order)
     wallet.sequence += 1
     return transaction
