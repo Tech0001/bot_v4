@@ -22,8 +22,8 @@ async def place_market_order_v4(client, wallet, market_id, side, size):
     """
     Updated function to place a market order using the v4 structure.
     """
-    node = await NodeClient.connect(client.node)
-    indexer = IndexerClient(client.rest_indexer)
+    node = await NodeClient.connect(client)  # Using client directly for connection
+    indexer = IndexerClient(client)  # Correct way to instantiate indexer client
 
     market = Market((await indexer.markets.get_perpetual_markets(market_id))["markets"][market_id])
 
@@ -47,11 +47,10 @@ async def place_market_order_v4(client, wallet, market_id, side, size):
     return transaction
 
 # Function to retrieve the account balance information
-async def get_account_balance(client, address):
+async def get_account_balance(indexer, address):
     """
     Retrieves account information for a given address.
     """
-    indexer = IndexerClient(client.rest_indexer)
     account_info = await indexer.get_account(address)
     
     # Check if free collateral is present
@@ -86,6 +85,9 @@ async def open_positions(client):
                 bot_agents.append(p)
     except FileNotFoundError:
         bot_agents = []
+
+    # Initialize the Indexer client separately
+    indexer = IndexerClient(client)
 
     # Find ZScore triggers
     for index, row in df.iterrows():
@@ -161,7 +163,7 @@ async def open_positions(client):
                     if check_base and check_quote:
 
                         # Get the account balance
-                        free_collateral = await get_account_balance(client, DYDX_ADDRESS)
+                        free_collateral = await get_account_balance(indexer, DYDX_ADDRESS)
                         print(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
 
                         # Guard: Ensure collateral
