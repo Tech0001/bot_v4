@@ -1,12 +1,11 @@
-# func_utils.py
 from datetime import datetime, timedelta
 import numpy as np
 
 # Format number
 def format_number(curr_num, match_num):
     """
-    Give current number an example of number with decimals desired
-    Function will return the correctly formatted string
+    Give current number an example of number with decimals desired.
+    Function will return the correctly formatted string.
     """
     curr_num_string = f"{curr_num}"
     match_num_string = f"{match_num}"
@@ -25,6 +24,9 @@ def format_time(timestamp):
 
 # Get ISO Times
 def get_ISO_times():
+    """
+    Returns dictionary with four date ranges, formatted in ISO format.
+    """
     # Get timestamps
     date_start_0 = datetime.now()
     date_start_1 = date_start_0 - timedelta(hours=100)
@@ -55,23 +57,44 @@ def get_ISO_times():
     # Return result
     return times_dict
 
-# Additional utility functions
-async def get_markets(client):
-    # Implementation here
-    pass
-
-async def get_candles_recent(client, market):
-    # Implementation here
-    pass
-
+# Calculate z-score
 def calculate_zscore(spread):
-    # Implementation here
-    pass
+    """
+    Calculates the z-score of the spread between two assets over time.
+    """
+    mean = np.mean(spread)
+    std = np.std(spread)
+    zscore = (spread - mean) / std
+    return zscore
 
+# Get recent candles
+async def get_candles_recent(client, market):
+    """
+    Retrieves the most recent candles for the specified market from the dYdX API.
+    """
+    candles = await client.indexer.get_candles(market=market)
+    return candles
+
+# Get markets
+async def get_markets(client):
+    """
+    Retrieves the available markets from the dYdX API.
+    """
+    markets = await client.indexer.get_markets()
+    return markets
+
+# Get open positions
 async def get_open_positions(client):
-    # Implementation here
-    pass
+    """
+    Retrieves the currently open positions for the connected wallet.
+    """
+    positions = await client.indexer_account.get_subaccount_perpetual_positions(client.wallet.address, 0)
+    return positions
 
+# Get account information
 async def get_account(client):
-    # Implementation here
-    pass
+    """
+    Retrieves the account details, including available collateral and balances.
+    """
+    account = await client.indexer_account.get_subaccount(client.wallet.address, 0)
+    return account
