@@ -15,8 +15,6 @@ from dydx_v4_client.indexer.rest.constants import OrderType
 from dydx_v4_client.network import TESTNET
 import random
 
-from pprint import pprint
-
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]
 
 async def place_market_order_v4(node, wallet, market_id, side, size):
@@ -44,29 +42,23 @@ async def place_market_order_v4(node, wallet, market_id, side, size):
     wallet.sequence += 1
     return transaction
 
-async def get_balance_info(node, wallet_address):
+async def get_account_balance(node, wallet_address):
     """
-    Fetch the correct balance information using the NodeClient.
-    This fetches all balance-related details.
+    Fetch the account balance correctly using the NodeClient.
     """
-    # Fetch the account information
+    # Fetch the account information from the node
     account_info = await node.get_account(wallet_address)
 
-    # Debug: Print the entire account response to understand the structure
-    print("Account Info Response: ", account_info)
+    # Print account info for debugging
+    print("Account Info Response:", account_info)
 
-    # We now need to fetch balance separately (depends on dYdX balance handling)
-    balances = await node.get_balances(wallet_address)  # Hypothetical method to retrieve balances
-    print("Balances Info: ", balances)
-
-    # Extract the balance information from the response
-    # Adjust this based on the actual structure returned by `get_balances`
-    if hasattr(balances, "total_free_balance"):
-        free_collateral = float(balances.total_free_balance)
+    # Assuming there is a balances field, adjust the extraction according to the structure
+    if hasattr(account_info, "balances"):
+        free_balance = float(account_info.balances["available"])  # Adjust this field based on actual response
     else:
-        raise ValueError("total_free_balance attribute not found in balance info")
+        raise ValueError("Account balance information not found in account info")
 
-    return free_collateral
+    return free_balance
 
 # Open positions
 async def open_positions(client):
@@ -173,12 +165,12 @@ async def open_positions(client):
                         # Wallet initialization (from mnemonic)
                         wallet = await Wallet.from_mnemonic(node, SECRET_PHRASE, DYDX_ADDRESS)
 
-                        # Fetch balance info using NodeClient
-                        free_collateral = await get_balance_info(node, wallet.address)
-                        print(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
+                        # Fetch account balance info
+                        free_balance = await get_account_balance(node, wallet.address)
+                        print(f"Balance: {free_balance} and minimum at {USD_MIN_COLLATERAL}")
 
                         # Guard: Ensure collateral
-                        if free_collateral < USD_MIN_COLLATERAL:
+                        if free_balance < USD_MIN_COLLATERAL:
                             break
 
                         # Place Base Market Order
