@@ -18,19 +18,25 @@ from pprint import pprint
 
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
 
-async def place_market_order_v4(client, wallet, market_id, side, size):
+async def place_market_order_v4(node_client, wallet, market_id, side, size):
     """
     Updated function to place a market order using the v4 structure.
     """
-    node = await NodeClient.connect(client)  # Using client directly for connection
-    indexer = IndexerClient(client)  # Correct way to instantiate indexer client
+    # Ensure the node client is used to connect and manage orders
+    node = await NodeClient.connect(node_client)  # Using correct node client
+    
+    # Initialize indexer with correct client object
+    indexer = IndexerClient(node_client)
 
+    # Ensure market ID is correctly retrieved from indexer
     market = Market((await indexer.markets.get_perpetual_markets(market_id))["markets"][market_id])
 
+    # Generate the order ID and set the block height for the order
     order_id = market.order_id(wallet.address, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
 
     current_block = await node.latest_block_height()
 
+    # Create the market order
     new_order = market.order(
         order_id=order_id,
         order_type=OrderType.MARKET,
@@ -42,6 +48,7 @@ async def place_market_order_v4(client, wallet, market_id, side, size):
         good_til_block=current_block + 10,
     )
 
+    # Place the market order via the node
     transaction = await node.place_order(wallet=wallet, order=new_order)
     wallet.sequence += 1
     return transaction
