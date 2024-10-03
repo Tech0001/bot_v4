@@ -1,10 +1,9 @@
-# Imports
+import asyncio
 import random
 import time
 import json
-from dydx_v4_client.indexer.rest.constants import TradingRewardAggregationPeriod, OrderType
 from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
-from dydx_v4_client.network import TESTNET  # For testnet configuration
+from dydx_v4_client.network import TESTNET  # Or replace with MAINNET for production
 from constants import DYDX_ADDRESS, ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
@@ -12,7 +11,6 @@ from func_public import get_candles_recent
 from func_private import get_open_positions, get_account
 from func_bot_agent import BotAgent
 import pandas as pd
-import asyncio
 
 # Initialize IndexerClient for testnet or mainnet
 client = IndexerClient(TESTNET.rest_indexer)  # Replace TESTNET with your mainnet if needed
@@ -22,6 +20,16 @@ test_address = DYDX_ADDRESS
 
 # Refine or remove IGNORE_ASSETS if not necessary
 IGNORE_ASSETS = ["", ""]  # Example of assets you want to ignore
+
+# Fetch market data using the correct method
+async def fetch_market_data(client, market):
+    try:
+        # Fetch market data using the correct perpetual market method
+        market_data = await client.markets.getPerpetualMarket(market)
+        return market_data
+    except Exception as e:
+        print(f"Error fetching market data for {market}: {e}")
+        return None
 
 # Check if a position is open for a given market
 async def is_open_positions(client, market):
@@ -43,8 +51,10 @@ async def is_open_positions(client, market):
 # Place market order (using preexisting functions)
 async def place_market_order(client, market, side, size, price, reduce_only):
     try:
-        # Fetch market data from IndexerClient (you may need to adjust this to the actual available method)
-        market_data = await client.get_markets()  # Fetch available markets data
+        # Fetch market data using the correct method
+        market_data = await fetch_market_data(client, market)
+        if not market_data:
+            return
 
         # Example structure for order placement
         order = {
@@ -57,7 +67,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         print(f"Placing order: {order}")
 
         # Call appropriate method for placing order (adjust to your available functions)
-        await client.place_order(order)
+        await client.indexer.place_order(order)
 
     except Exception as e:
         print(f"Error placing market order for {market}: {e}")
@@ -126,8 +136,8 @@ async def open_positions(client):
 
                             # Fetch market data for size and price calculations
                             try:
-                                base_market_data = await client.get_markets()  # Correct method
-                                quote_market_data = await client.get_markets()  # Correct method
+                                base_market_data = await fetch_market_data(client, base_market)
+                                quote_market_data = await fetch_market_data(client, quote_market)
                             except Exception as e:
                                 print(f"Error fetching market data for {base_market} or {quote_market}: {e}")
                                 continue
