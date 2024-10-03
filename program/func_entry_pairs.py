@@ -44,11 +44,12 @@ async def is_open_positions(client, market):
 async def place_market_order(client, market, side, size, price, reduce_only):
     try:
         # Fetch market data using correct method from IndexerClient
-        market_data = await client.get_perpetual_market(market)  # Correct method for fetching market data
+        # Replace 'get_perpetual_market' with correct 'get_markets' method
+        market_data = await client.markets.get_markets()  # Correct method for fetching market data
 
         # Example structure for order placement
         order = {
-            "market": market_data["market"],
+            "market": market,
             "side": side,
             "size": size,
             "price": price,
@@ -57,7 +58,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         print(f"Placing order: {order}")
 
         # Call appropriate method for placing order (adjust to your available functions)
-        await client.place_order(order)
+        await client.indexer.place_order(order)
 
     except Exception as e:
         print(f"Error placing market order for {market}: {e}")
@@ -126,8 +127,8 @@ async def open_positions(client):
 
                             # Fetch market data for size and price calculations
                             try:
-                                base_market_data = await client.get_perpetual_market(base_market)  # Correct method
-                                quote_market_data = await client.get_perpetual_market(quote_market)  # Correct method
+                                base_market_data = await client.markets.get_markets()  # Correct method
+                                quote_market_data = await client.markets.get_markets()  # Correct method
                             except Exception as e:
                                 print(f"Error fetching market data for {base_market} or {quote_market}: {e}")
                                 continue
