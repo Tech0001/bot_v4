@@ -12,12 +12,12 @@ from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
 from dydx_v4_client.node.market import Market
 from dydx_v4_client import MAX_CLIENT_ID, OrderFlags
 from dydx_v4_client.indexer.rest.constants import OrderType
-from dydx_v4_client.network import TESTNET  # Correctly using the TESTNET network configuration
+from dydx_v4_client.network import TESTNET
 import random
 
 from pprint import pprint
 
-IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
+IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]
 
 async def place_market_order_v4(node, wallet, market_id, side, size):
     """
@@ -51,8 +51,15 @@ async def get_account_balance_v4(node, wallet_address):
     # Fetch account details using the NodeClient
     account_info = await node.get_account(wallet_address)
 
-    # Properly accessing account attributes
-    free_collateral = float(account_info.free_collateral)  # Adjusted to access attributes directly
+    # Debug: Print out the entire account_info response
+    print("Account Info Response: ", account_info)
+
+    # Attempt to access the free collateral, or log if not found
+    if hasattr(account_info, "free_collateral"):
+        free_collateral = float(account_info.free_collateral)
+    else:
+        raise ValueError("free_collateral attribute not found in account_info")
+
     return free_collateral
 
 # Open positions
@@ -66,8 +73,8 @@ async def open_positions(client):
     # Load cointegrated pairs
     df = pd.read_csv("cointegrated_pairs.csv")
 
-    # Initialize NodeClient and IndexerClient for TESTNET
-    node = await NodeClient.connect(TESTNET.node)  # No chain_id here, it's part of TESTNET
+    # Initialize NodeClient for TESTNET
+    node = await NodeClient.connect(TESTNET.node)
 
     # Get markets for reference (min order size, tick size, etc.)
     markets = await get_markets(client)
