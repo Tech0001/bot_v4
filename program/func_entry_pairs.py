@@ -100,37 +100,37 @@ async def open_positions(client):
         if series_1 and series_2 and len(series_1) > 0 and len(series_1) == len(series_2):
             try:
                 spread = [float(s1) - (hedge_ratio * float(s2)) for s1, s2 in zip(series_1, series_2)]
-                z_score = calculate_zscore(spread).values.tolist()[-1]
+                z_score = calculate_zscore(spread).values.tolist()[-1]  # Calculate z-score for the spread
+                
+                # Fix: Ensure the condition for z_score is properly handled
+                if abs(z_score) >= ZSCORE_THRESH:
+                    # Proceed with trade logic if condition is met
+                    is_base_open = await is_open_positions(client, base_market)
+                    is_quote_open = await is_open_positions(client, quote_market)
+
+                    if not is_base_open and not is_quote_open:
+                        base_side = "BUY" if z_score < 0 else "SELL"
+                        quote_side = "BUY" if z_score > 0 else "SELL"
+
+                        # Fetch market data for size and price calculations
+                        try:
+                            base_market_data = await get_markets(client, base_market)
+                            quote_market_data = await get_markets(client, quote_market)
+                        except Exception as e:
+                            print(f"Error fetching market data for {base_market} or {quote_market}: {e}")
+                            continue
+
+                        base_price = series_1[-1]
+                        quote_price = series_2[-1]
+                        base_quantity = 1 / base_price * USD_PER_TRADE
+                        quote_quantity = 1 / quote_price * USD_PER_TRADE
+
+                        # Ensure minimum order size and place the orders
+                        await place_market_order(client, base_market, base_side, base_quantity, base_price, False)
+                        await place_market_order(client, quote_market, quote_side, quote_quantity, quote_price, False)
+    
             except TypeError as te:
                 print(f"Error calculating spread or z-score: {te}")
-                continue
-
-            # Check if the trade trigger meets the z-score threshold
-            if abs(z_score) >= ZSCORE_THRESH:
-                # Ensure positions are not already open for the pair
-                is_base_open = await is_open_positions(client, base_market)
-                is_quote_open = await is_open_positions(client, quote_market)
-
-                if not is_base_open and not is_quote_open:
-                    base_side = "BUY" if z_score < 0 else "SELL"
-                    quote_side = "BUY" if z_score > 0 else "SELL"
-
-                    # Fetch market data for size and price calculations
-                    try:
-                        base_market_data = await get_markets(client, base_market)
-                        quote_market_data = await get_markets(client, quote_market)
-                    except Exception as e:
-                        print(f"Error fetching market data for {base_market} or {quote_market}: {e}")
-                        continue
-
-                    base_price = series_1[-1]
-                    quote_price = series_2[-1]
-                    base_quantity = 1 / base_price * USD_PER_TRADE
-                    quote_quantity = 1 / quote_price * USD_PER_TRADE
-
-                    # Ensure minimum order size and place the orders
-                    await place_market_order(client, base_market, base_side, base_quantity, base_price, False)
-                    await place_market_order(client, quote_market, quote_side, quote_quantity, quote_price, False)
 
     # Save agents to the file
     print("Success: All open trades checked")
