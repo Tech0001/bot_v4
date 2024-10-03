@@ -50,7 +50,9 @@ async def get_account_balance_v4(node, wallet_address):
     """
     # Fetch account details using the NodeClient
     account_info = await node.get_account(wallet_address)
-    free_collateral = float(account_info["freeCollateral"])
+
+    # Properly accessing account attributes
+    free_collateral = float(account_info.free_collateral)  # Adjusted to access attributes directly
     return free_collateral
 
 # Open positions
