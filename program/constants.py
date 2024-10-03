@@ -5,7 +5,7 @@ from dydx_v4_client import MAX_CLIENT_ID  # Import MAX_CLIENT_ID from dydx_v4_cl
 MARKET_DATA_MODE = "TESTNET"  # Options: "TESTNET" or "MAINNET"
 
 # Close all open positions and orders
-ABORT_ALL_POSITIONS = False 
+ABORT_ALL_POSITIONS = True 
 
 # Find Cointegrated Pairs
 FIND_COINTEGRATED = False
