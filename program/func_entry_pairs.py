@@ -2,7 +2,7 @@ from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL, MNEMONIC
 from func_utils import format_number
 from func_cointegration import calculate_zscore
 from func_public import get_candles_recent, get_markets
-from func_private import is_open_positions, get_account
+from func_private import is_open_positions
 from func_bot_agent import BotAgent
 import pandas as pd
 import json
@@ -45,6 +45,21 @@ async def place_market_order_v4(client, wallet, market_id, side, size):
     transaction = await node.place_order(wallet=wallet, order=new_order)
     wallet.sequence += 1
     return transaction
+
+# Function to retrieve the account balance information
+async def get_account_balance(client, address):
+    """
+    Retrieves account information for a given address.
+    """
+    indexer = IndexerClient(client.rest_indexer)
+    account_info = await indexer.get_account(address)
+    
+    # Check if free collateral is present
+    if account_info and "balances" in account_info:
+        free_collateral = float(account_info["balances"]["freeCollateral"])
+        return free_collateral
+    else:
+        raise ValueError("Account balance information not found in account info.")
 
 # Open positions
 async def open_positions(client):
@@ -145,9 +160,8 @@ async def open_positions(client):
                     # If checks pass, place trades
                     if check_base and check_quote:
 
-                        # Check account balance
-                        account = await get_account(client)
-                        free_collateral = float(account.get("freeCollateral", 0))  # Safely access freeCollateral
+                        # Get the account balance
+                        free_collateral = await get_account_balance(client, DYDX_ADDRESS)
                         print(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
 
                         # Guard: Ensure collateral
