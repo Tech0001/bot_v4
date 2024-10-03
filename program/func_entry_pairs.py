@@ -24,9 +24,9 @@ IGNORE_ASSETS = ["", ""]  # Example of assets you want to ignore
 # Fetch market data using the correct method
 async def fetch_market_data(client, market):
     try:
-        # Fetch market data directly without using 'markets' attribute
-        market_data = await client.getPerpetualMarket(market)
-        return market_data
+        # Fetch perpetual markets using the correct method (getMarkets)
+        market_data = await client.getMarkets()
+        return market_data.get(market)  # Get the specific market data from the list
     except Exception as e:
         print(f"Error fetching market data for {market}: {e}")
         return None
