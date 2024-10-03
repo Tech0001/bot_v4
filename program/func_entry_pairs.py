@@ -3,15 +3,21 @@ import random
 import time
 import json
 from dydx_v4_client import MAX_CLIENT_ID, Order, OrderFlags
-from dydx_v4_client.node.market import Market
 from dydx_v4_client.indexer.rest.constants import OrderType
+from dydx_v4_client.indexer.rest.indexer_client import IndexerClient  # Correct IndexerClient import
 from constants import DYDX_ADDRESS, ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
-from func_public import get_candles_recent, get_markets
+from func_public import get_candles_recent
 from func_private import get_open_positions, get_account
 from func_bot_agent import BotAgent
 import pandas as pd
+
+# Initialize IndexerClient with proper configuration (using testnet as an example)
+client = IndexerClient(
+    network_id=1,  # 1 for mainnet, change as needed
+    host="https://api.your-endpoint.com",  # Replace with your actual indexer API endpoint
+)
 
 # Refine or remove IGNORE_ASSETS if not necessary
 IGNORE_ASSETS = ["", ""]  # Example of assets you want to ignore
@@ -36,8 +42,8 @@ async def is_open_positions(client, market):
 # Place market order (using preexisting functions)
 async def place_market_order(client, market, side, size, price, reduce_only):
     try:
-        # Fetch market data using the correct method from the dYdX v4 client
-        market_data = await client.markets.getPerpetualMarket(market)  # Fetch market data with correct method
+        # Fetch market data using correct method from IndexerClient
+        market_data = await client.get_perpetual_market(market)  # Correct method for fetching market data
 
         # Example structure for order placement
         order = {
@@ -50,7 +56,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         print(f"Placing order: {order}")
 
         # Call appropriate method for placing order (adjust to your available functions)
-        await client.indexer.place_order(order)
+        await client.place_order(order)
 
     except Exception as e:
         print(f"Error placing market order for {market}: {e}")
@@ -119,8 +125,8 @@ async def open_positions(client):
 
                             # Fetch market data for size and price calculations
                             try:
-                                base_market_data = await client.markets.getPerpetualMarket(base_market)  # Correct method
-                                quote_market_data = await client.markets.getPerpetualMarket(quote_market)  # Correct method
+                                base_market_data = await client.get_perpetual_market(base_market)  # Correct method
+                                quote_market_data = await client.get_perpetual_market(quote_market)  # Correct method
                             except Exception as e:
                                 print(f"Error fetching market data for {base_market} or {quote_market}: {e}")
                                 continue
