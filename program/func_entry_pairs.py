@@ -1,5 +1,4 @@
-from decouple import config  # Ensure this is used to load environment variables
-from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
+from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL, MNEMONIC, DYDX_ADDRESS
 from func_utils import format_number
 from func_cointegration import calculate_zscore
 from func_public import get_candles_recent, get_markets
@@ -18,10 +17,6 @@ import random
 from pprint import pprint
 
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
-
-# Load environment variables from .env
-DYDX_TEST_MNEMONIC = config("DYDX_TEST_MNEMONIC")
-DYDX_ADDRESS = config("DYDX_ADDRESS")
 
 async def place_market_order_v4(client, wallet, market_id, side, size):
     """
@@ -51,33 +46,6 @@ async def place_market_order_v4(client, wallet, market_id, side, size):
     wallet.sequence += 1
     return transaction
 
-async def get_account_balance(node, wallet_address):
-    """
-    Fetch the account balance correctly using the NodeClient and handle missing balance attributes.
-    """
-    # Fetch the account information from the node
-    account_info = await node.get_account(wallet_address)
-
-    # Print account info for debugging
-    print("Account Info Response:", account_info)
-
-    # Check if the expected balance field is present
-    if hasattr(account_info, "balances"):
-        # Adjust this based on how the actual balance structure is formatted in the v4 API
-        free_balance = float(account_info.balances["available"])  # Adjust based on actual response format
-    elif hasattr(account_info, "account"):
-        # In case the structure is nested, check another possible structure
-        if hasattr(account_info.account, "balances"):
-            free_balance = float(account_info.account.balances["available"])  # Adjust this as needed
-        else:
-            raise ValueError("Account balance information not found in account info")
-    else:
-        # Handle the case where the expected fields are not found
-        raise ValueError("Account balance information not found in account info")
-
-    return free_balance
-
-
 # Open positions
 async def open_positions(client):
 
@@ -97,11 +65,11 @@ async def open_positions(client):
 
     # Opening JSON file
     try:
-        open_positions_file = open("bot_agents.json")
-        open_positions_dict = json.load(open_positions_file)
-        for p in open_positions_dict:
-            bot_agents.append(p)
-    except:
+        with open("bot_agents.json") as open_positions_file:
+            open_positions_dict = json.load(open_positions_file)
+            for p in open_positions_dict:
+                bot_agents.append(p)
+    except FileNotFoundError:
         bot_agents = []
 
     # Find ZScore triggers
@@ -178,14 +146,16 @@ async def open_positions(client):
                     if check_base and check_quote:
 
                         # Check account balance
-                        node = await NodeClient.connect(client.node)
-                        wallet = await Wallet.from_mnemonic(node, DYDX_TEST_MNEMONIC, DYDX_ADDRESS)
-                        free_collateral = await get_account_balance(node, wallet.address)
+                        account = await get_account(client)
+                        free_collateral = float(account.get("freeCollateral", 0))  # Safely access freeCollateral
                         print(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
 
                         # Guard: Ensure collateral
                         if free_collateral < USD_MIN_COLLATERAL:
                             break
+
+                        # Wallet initialization (from mnemonic)
+                        wallet = await Wallet.from_mnemonic(client, MNEMONIC, DYDX_ADDRESS)
 
                         # Place Base Market Order
                         base_order_transaction = await place_market_order_v4(
@@ -236,7 +206,7 @@ async def open_positions(client):
                         if bot_open_dict["pair_status"] == "LIVE":
                             # Append to list of bot agents
                             bot_agents.append(bot_open_dict)
-                            del (bot_open_dict)
+                            del(bot_open_dict)
 
                             # Save trade
                             with open("bot_agents.json", "w") as f:
