@@ -2,105 +2,122 @@ from constants import RESOLUTION
 from func_utils import get_ISO_times
 import pandas as pd
 import numpy as np
-import asyncio
+import time
+
+from pprint import pprint
 
 # Get relevant time periods for ISO from and to
 ISO_TIMES = get_ISO_times()
 
-# Get Recent Candles (Reverted to simpler logic)
+# Get Recent Candles
 async def get_candles_recent(client, market):
-    close_prices = []
-    await asyncio.sleep(0.2)  # Rate limiting protection
 
-    try:
-        response = await client.indexer.markets.get_perpetual_market_candles(
-            market=market,
-            resolution=RESOLUTION
-        )
-    except Exception as e:
-        print(f"Error fetching recent candles for {market}: {e}")
-        return None
+  # Define output
+  close_prices = []
 
-    for candle in response["candles"]:
-        close_prices.append(candle["close"])
+  # Protect API
+  time.sleep(0.2)
 
-    close_prices.reverse()
-    prices_result = np.array(close_prices).astype(np.float64)
-    return prices_result
+  # Get Prices from DYDX V4
+  response = await client.indexer.markets.get_perpetual_market_candles(
+    market = market, 
+    resolution = RESOLUTION
+  )
+
+  # Candles
+  candles = response
+
+  # Structure data
+  for candle in candles["candles"]:
+    close_prices.append(candle["close"])
+
+  # Construct and return close price series
+  close_prices.reverse()
+  prices_result = np.array(close_prices).astype(np.float64)
+  return prices_result
+
 
 # Get Historical Candles
 async def get_candles_historical(client, market):
-    close_prices = []
 
-    # Extract historical price data for each timeframe
-    for timeframe in ISO_TIMES.keys():
-        tf_obj = ISO_TIMES[timeframe]
-        from_iso = tf_obj["from_iso"] + ".000Z"
-        to_iso = tf_obj["to_iso"] + ".000Z"
+  # Define output
+  close_prices = []
 
-        await asyncio.sleep(0.2)  # Rate limiting protection
+  # Extract historical price data for each timeframe
+  for timeframe in ISO_TIMES.keys():
 
-        try:
-            response = await client.indexer.markets.get_perpetual_market_candles(
-                market=market,
-                resolution=RESOLUTION,
-                from_iso=from_iso,
-                to_iso=to_iso,
-                limit=100
-            )
-        except Exception as e:
-            print(f"Error fetching historical candles for {market} ({from_iso} - {to_iso}): {e}")
-            continue
+    # Confirm times needed
+    tf_obj = ISO_TIMES[timeframe]
+    from_iso = tf_obj["from_iso"] + ".000Z"
+    to_iso = tf_obj["to_iso"] + ".000Z"
 
-        for candle in response["candles"]:
-            close_prices.append({"datetime": candle["startedAt"], market: candle["close"]})
+    # Protect rate limits
+    time.sleep(0.2)
 
-    close_prices.reverse()
-    return close_prices
+    response = await client.indexer.markets.get_perpetual_market_candles(
+      market = market, 
+      resolution = RESOLUTION, 
+      from_iso = from_iso,
+      to_iso = to_iso,
+      limit = 100
+    )
 
-# Get all available tradeable markets
+    candles = response
+
+    # Structure data
+    for candle in candles["candles"]:
+      close_prices.append({"datetime": candle["startedAt"], market: candle["close"] })
+
+  # Construct and return DataFrame
+  close_prices.reverse()
+  return close_prices
+
+
+# Get Markets
 async def get_markets(client):
-    return await client.indexer.markets.get_perpetual_markets()
+  return await client.indexer.markets.get_perpetual_markets()
 
-# Construct market prices dynamically for all tradeable markets
+
+# Construct market prices
 async def construct_market_prices(client):
-    tradeable_markets = []
-    markets = await get_markets(client)
 
-    # Filter for active markets
-    for market in markets["markets"].keys():
-        market_info = markets["markets"][market]
-        if market_info["status"] == "ACTIVE":
-            tradeable_markets.append(market)
+  # Ensure only Testnet Assets are used
 
-    # Fetch data for the first market to initialize the DataFrame
-    close_prices = await get_candles_historical(client, tradeable_markets[0])
-    if not close_prices:
-        print(f"Failed to fetch historical data for {tradeable_markets[0]}")
-        return None
+  # Declare variables
+  tradeable_markets = []
+  markets = await get_markets(client)
 
-    df = pd.DataFrame(close_prices)
-    df.set_index("datetime", inplace=True)
+  # Find tradeable pairs
+  for market in markets["markets"].keys():
+    market_info = markets["markets"][market]
+    if market_info["status"] == "ACTIVE":
+      tradeable_markets.append(market)
 
-    # Loop through the remaining markets to fetch their data
-    for (i, market) in enumerate(tradeable_markets[1:], start=1):
-        print(f"Extracting prices for {i + 1} of {len(tradeable_markets)} tokens for {market}")
-        close_prices_add = await get_candles_historical(client, market)
-        if close_prices_add:
-            df_add = pd.DataFrame(close_prices_add)
-            try:
-                df_add.set_index("datetime", inplace=True)
-                df = pd.merge(df, df_add, how="outer", on="datetime", copy=False)
-            except Exception as e:
-                print(f"Failed to add {market}: {e}")
-            del df_add
-        else:
-            print(f"Failed to fetch data for {market}")
+  # Set initial DateFrame
+  close_prices = await get_candles_historical(client, tradeable_markets[0])
+  df = pd.DataFrame(close_prices)
+  df.set_index("datetime", inplace=True)
 
-    # Drop columns with NaNs
-    nans = df.columns[df.isna().any()].tolist()
-    if nans:
-        print(f"Dropping columns: {nans}")
-        df.drop(columns=nans, inplace=True)
+  # Append other prices to DataFrame
+  # You can limit the amount to loop though here to save time in development
+  for (i, market) in enumerate(tradeable_markets[0:]):
+    print(f"Extracting prices for {i + 1} of {len(tradeable_markets)} tokens for {market}")
+    close_prices_add = await get_candles_historical(client, market)
+    df_add = pd.DataFrame(close_prices_add)
+    try:
+      df_add.set_index("datetime", inplace=True)
+      df = pd.merge(df, df_add, how="outer", on="datetime", copy=False)
+      # print(df.head())
+    except Exception as e: 
+      print(f"Failed to add {market} - {e}")
+    del df_add
 
-    return df
+  # Check any columns with NaNs
+  nans = df.columns[df.isna().any()].tolist()
+  if len(nans) > 0:
+    print("Dropping columns: ")
+    print(nans)
+    df.drop(columns=nans, inplace=True)
+
+  # Return result
+  return df

@@ -1,15 +1,15 @@
-# Import necessary functions and constants
-from func_private import place_market_order, check_order_status, cancel_order, get_order
+from func_private import place_market_order, check_order_status, cancel_order
 from datetime import datetime
+from func_messaging import send_message
 import asyncio
-import logging
-import random  # Import for generating unique order IDs
-from constants import DYDX_ADDRESS, MNEMONIC  # Use MNEMONIC and DYDX_ADDRESS from your provided terms
+import time
 
-# Class: Agent for managing opening and checking trades
+
 class BotAgent:
+    """
+    Agent to manage the opening of trades and checking the status of orders.
+    """
 
-    # Initialize class
     def __init__(
         self,
         client,
@@ -25,7 +25,6 @@ class BotAgent:
         z_score,
         half_life,
         hedge_ratio,
-        time_in_force="DEFAULT",  # Added for TIF
     ):
         self.client = client
         self.market_1 = market_1
@@ -40,9 +39,8 @@ class BotAgent:
         self.z_score = z_score
         self.half_life = half_life
         self.hedge_ratio = hedge_ratio
-        self.time_in_force = time_in_force  # Keep time in force setting for orders
 
-        # Initialize output variable
+        # Initialize order status
         self.order_dict = {
             "market_1": market_1,
             "market_2": market_2,
@@ -61,51 +59,45 @@ class BotAgent:
             "comments": "",
         }
 
-    # Retry mechanism to fetch the order details if `createdAtHeight` is missing
-    async def retry_fetch_order(self, order_id, retries=3, delay=3):
-        order = None
-        for attempt in range(retries):
-            order = await get_order(self.client, order_id)
-            if order and "createdAtHeight" in order:
-                logging.info(f"Order found with createdAtHeight: {order['createdAtHeight']}")
-                return order
-            logging.warning(f"Retry {attempt + 1}/{retries} - Waiting for createdAtHeight...")
-            await asyncio.sleep(delay)
-        logging.error(f"Warning: 'createdAtHeight' not found after {retries} retries. Proceeding without it.")
-        return order
+    async def check_order_status_by_id(self, order_id):
+        # Allow time to process
+        await asyncio.sleep(2)  # Asynchronous wait
 
-    # Check order status by id with retries
-    async def check_order_status_by_id(self, order_id, retries=3, delay=3):
-        for attempt in range(retries):
-            await asyncio.sleep(2)
-            order_status = await check_order_status(self.client, order_id)
-
-            if order_status == "CANCELED":
-                logging.error(f"{self.market_1} vs {self.market_2} - Order canceled...")
-                self.order_dict["pair_status"] = "FAILED"
-                return "failed"
-
-            if order_status == "FILLED":
-                return "live"
-
-            logging.warning(f"Order status not filled. Attempt {attempt + 1}/{retries}. Retrying...")
-            await asyncio.sleep(delay)
-
-        logging.error(f"Order status check failed after {retries} retries. Canceling order...")
-        await cancel_order(self.client, order_id)
-        self.order_dict["pair_status"] = "ERROR"
-        return "error"
-
-    # Open trades with improved retry logic
-    async def open_trades(self):
-        logging.info(f"{self.market_1}: Placing first order (Side: {self.base_side}, Size: {self.base_size}, Price: {self.base_price})")
-
+        # Check order status
         try:
-            # Unique order ID generation using random
-            order_id_m1 = f"{DYDX_ADDRESS}_{random.randint(1, 100000)}"
+            order_status = await check_order_status(self.client, order_id)
+        except Exception as e:
+            print(f"Error checking order status: {e}")
+            self.order_dict["pair_status"] = "ERROR"
+            return "error"
 
-            # Place first order
-            (base_order, order_id) = await place_market_order(
+        if order_status == "CANCELED":
+            print(f"Order {order_id} canceled.")
+            self.order_dict["pair_status"] = "FAILED"
+            return "failed"
+
+        # Wait for 15 seconds to ensure order fills
+        await asyncio.sleep(15)
+        order_status = await check_order_status(self.client, order_id)
+
+        if order_status == "CANCELED":
+            print(f"Order {order_id} canceled after retry.")
+            self.order_dict["pair_status"] = "FAILED"
+            return "failed"
+
+        if order_status != "FILLED":
+            await cancel_order(self.client, order_id)
+            self.order_dict["pair_status"] = "ERROR"
+            print(f"Order {order_id} not filled. Cancelling order.")
+            return "error"
+
+        return "live"
+
+    async def open_trades(self):
+        # Place first order
+        print(f"Placing first order for {self.market_1}")
+        try:
+            base_order, order_id = await place_market_order(
                 self.client,
                 market=self.market_1,
                 side=self.base_side,
@@ -113,35 +105,28 @@ class BotAgent:
                 price=self.base_price,
                 reduce_only=False
             )
-            self.order_dict["order_id_m1"] = order_id_m1
+            self.order_dict["order_id_m1"] = order_id
             self.order_dict["order_time_m1"] = datetime.now().isoformat()
-            logging.info("First order sent...")
-
-            base_order = await self.retry_fetch_order(order_id_m1)
-
-            if base_order:
-                self.process_order_response(base_order, "m1")
+            print("First order sent.")
         except Exception as e:
-            logging.error(f"Error placing first order: {e}")
+            print(f"Error placing first order: {e}")
             self.order_dict["pair_status"] = "ERROR"
-            self.order_dict["comments"] = f"Market 1 {self.market_1}: {e}"
+            self.order_dict["comments"] = f"Error placing order for {self.market_1}: {e}"
             return self.order_dict
 
-        logging.info("Checking first order status...")
+        # Check status of the first order
+        print(f"Checking status for order {self.order_dict['order_id_m1']}")
         order_status_m1 = await self.check_order_status_by_id(self.order_dict["order_id_m1"])
+
         if order_status_m1 != "live":
             self.order_dict["pair_status"] = "ERROR"
-            self.order_dict["comments"] = f"{self.market_1} failed to fill"
+            self.order_dict["comments"] = f"Order for {self.market_1} failed to fill."
             return self.order_dict
 
-        logging.info(f"{self.market_2}: Placing second order (Side: {self.quote_side}, Size: {self.quote_size}, Price: {self.quote_price})")
-
+        # Place second order
+        print(f"Placing second order for {self.market_2}")
         try:
-            # Unique order ID generation for second market
-            order_id_m2 = f"{DYDX_ADDRESS}_{random.randint(1, 100000)}"
-
-            # Place second order
-            (quote_order, order_id) = await place_market_order(
+            quote_order, order_id = await place_market_order(
                 self.client,
                 market=self.market_2,
                 side=self.quote_side,
@@ -149,62 +134,44 @@ class BotAgent:
                 price=self.quote_price,
                 reduce_only=False
             )
-            self.order_dict["order_id_m2"] = order_id_m2
+            self.order_dict["order_id_m2"] = order_id
             self.order_dict["order_time_m2"] = datetime.now().isoformat()
-            logging.info("Second order sent...")
-
-            quote_order = await self.retry_fetch_order(order_id_m2)
-
-            if quote_order:
-                self.process_order_response(quote_order, "m2")
+            print("Second order sent.")
         except Exception as e:
-            logging.error(f"Error placing second order: {e}")
+            print(f"Error placing second order: {e}")
             self.order_dict["pair_status"] = "ERROR"
-            self.order_dict["comments"] = f"Market 2 {self.market_2}: {e}"
+            self.order_dict["comments"] = f"Error placing order for {self.market_2}: {e}"
             return self.order_dict
 
-        logging.info("Checking second order status...")
+        # Check status of the second order
+        print(f"Checking status for order {self.order_dict['order_id_m2']}")
         order_status_m2 = await self.check_order_status_by_id(self.order_dict["order_id_m2"])
 
         if order_status_m2 != "live":
             self.order_dict["pair_status"] = "ERROR"
-            self.order_dict["comments"] = f"{self.market_2} failed to fill"
+            self.order_dict["comments"] = f"Order for {self.market_2} failed to fill."
 
+            # Attempt to close first order
             try:
-                logging.info(f"Attempting to close position on {self.market_1} due to failed second order...")
-                (close_order, order_id) = await place_market_order(
+                close_order, order_id = await place_market_order(
                     self.client,
                     market=self.market_1,
-                    side=self.quote_side,
+                    side=self.quote_side,  # Close with opposite side
                     size=self.base_size,
                     price=self.accept_failsafe_base_price,
                     reduce_only=True
                 )
-
                 await asyncio.sleep(2)
                 order_status_close_order = await check_order_status(self.client, order_id)
                 if order_status_close_order != "FILLED":
-                    logging.error(f"Error closing position on {self.market_1}. Status: {order_status_close_order}")
-                    logging.error(f"ABORT PROGRAM - Unable to close position on {self.market_1}")
-                    self.order_dict["comments"] = f"ABORT PROGRAM: Failed to close position on {self.market_1}"
+                    print("Error: Failed to close the first order.")
+                    send_message("Critical error: Failed to close first order.")
                     exit(1)
-                else:
-                    logging.info(f"Position closed successfully for {self.market_1}")
-
             except Exception as e:
-                logging.error(f"Error closing first order on {self.market_1}: {e}")
-                self.order_dict["pair_status"] = "ERROR"
-                self.order_dict["comments"] = f"Close Market 1 {self.market_1}: {e}"
-                logging.error(f"ABORT PROGRAM - Exception while closing first order")
+                print(f"Error closing first order: {e}")
+                send_message(f"Critical error: {e}")
                 exit(1)
 
-        logging.info("SUCCESS: LIVE PAIR")
+        print("Both orders placed successfully.")
         self.order_dict["pair_status"] = "LIVE"
         return self.order_dict
-
-    # Process the order response to log details
-    def process_order_response(self, order, order_name):
-        if "createdAtHeight" in order:
-            logging.info(f"{order_name}: Order created at block height: {order['createdAtHeight']}")
-        else:
-            logging.warning(f"Notice: 'createdAtHeight' not found for {order_name}. Proceeding without it.")

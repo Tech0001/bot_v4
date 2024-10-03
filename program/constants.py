@@ -1,14 +1,14 @@
+# from dydx3.constants import API_HOST_MAINNET, API_HOST_GOERLI
 from decouple import config
-from dydx_v4_client import MAX_CLIENT_ID  # Import MAX_CLIENT_ID from dydx_v4_client
 
-# For gathering testnet data or live market data for cointegration calculation
-MARKET_DATA_MODE = "TESTNET"  # Options: "TESTNET" or "MAINNET"
+# For gathering tesnet data or live market data for cointegration calculation
+MARKET_DATA_MODE = "TESTNET" # vs "MAINNET"
 
 # Close all open positions and orders
-ABORT_ALL_POSITIONS = True 
+ABORT_ALL_POSITIONS = True
 
 # Find Cointegrated Pairs
-FIND_COINTEGRATED = True
+FIND_COINTEGRATED = False
 
 # Manage Exits
 MANAGE_EXITS = True
@@ -16,42 +16,29 @@ MANAGE_EXITS = True
 # Place Trades
 PLACE_TRADES = True
 
-# Resolution for market data
+# Resolution
 RESOLUTION = "1HOUR"
 
 # Stats Window
-WINDOW = 21  # Rolling window for cointegration
+WINDOW = 21
 
 # Thresholds - Opening
-MAX_HALF_LIFE = 12  # Maximum half-life for a cointegrated pair
-ZSCORE_THRESH = 1.5  # Z-score threshold for opening trades
-USD_PER_TRADE = 25  # Amount in USD per trade
-USD_MIN_COLLATERAL = 150  # Minimum collateral to ensure sufficient funds
+MAX_HALF_LIFE = 24
+ZSCORE_THRESH = 1.5
+USD_PER_TRADE = 10
+USD_MIN_COLLATERAL = 100
 
 # Thresholds - Closing
-CLOSE_AT_ZSCORE_CROSS = True  # Close positions when z-score crosses
+CLOSE_AT_ZSCORE_CROSS = True
 
-# Endpoint for Account Queries on Testnet and Mainnet
+# Endpoint for Account Queries on Testnet
 INDEXER_ENDPOINT_TESTNET = "https://indexer.v4testnet.dydx.exchange"
-INDEXER_ENDPOINT_MAINNET = "https://indexer.dydx.exchange"
-INDEXER_ACCOUNT_ENDPOINT = INDEXER_ENDPOINT_TESTNET  # Set this to MAINNET for live environment
+INDEXER_ENDPOINT_MAINNET = "https://indexer.dydx.trade"
+INDEXER_ACCOUNT_ENDPOINT = INDEXER_ENDPOINT_TESTNET
 
-#TIMEOUTS
-API_TIMEOUT = 10  # Timeout for API requests
-GRPC_RETRY_ATTEMPTS = 5  # Number of retry attempts for gRPC connection
-GRPC_RETRY_DELAY = 2  # Delay between retries in seconds
-
-
-# gRPC Endpoints for Testnet and Mainnet
-GRPC_ENDPOINT_TESTNET = "grpc.testnet.dydx.exchange:443"
-GRPC_ENDPOINT_MAINNET = "grpc.mainnet.dydx.exchange:443"
-INDEXER_GRPC_ENDPOINT_TESTNET = "indexer.testnet.dydx.exchange:443"
-INDEXER_GRPC_ENDPOINT_MAINNET = "indexer.mainnet.dydx.exchange:443"
-
-
-# Environment Variables loaded via config
-DYDX_ADDRESS = config("DYDX_ADDRESS")  # Address for your dYdX account
-SECRET_PHRASE = config("SECRET_PHRASE")  # Your secret phrase for the wallet
-MNEMONIC = SECRET_PHRASE  # Use the secret phrase as mnemonic
-TELEGRAM_TOKEN = config("TELEGRAM_TOKEN")  # Token for Telegram bot integration
-TELEGRAM_CHAT_ID = config("TELEGRAM_CHAT_ID")  # Telegram chat ID for notifications
+# Environment Variables
+DYDX_ADDRESS = config("DYDX_ADDRESS")
+SECRET_PHRASE = config("SECRET_PHRASE")
+MNEMONIC = (SECRET_PHRASE)
+TELEGRAM_TOKEN = config("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = config("TELEGRAM_CHAT_ID")
