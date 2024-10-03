@@ -119,8 +119,8 @@ async def open_positions(client):
 
                             # Fetch market data for size and price calculations
                             try:
-                                base_market_data = await get_markets(client, base_market)
-                                quote_market_data = await get_markets(client, quote_market)
+                                base_market_data = await get_markets(client)  # Removed market argument
+                                quote_market_data = await get_markets(client)  # Removed market argument
                             except Exception as e:
                                 print(f"Error fetching market data for {base_market} or {quote_market}: {e}")
                                 continue
