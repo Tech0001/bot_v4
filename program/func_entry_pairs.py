@@ -2,9 +2,9 @@
 import random
 import time
 import json
-from dydx_v4_client import MAX_CLIENT_ID, Order, OrderFlags
-from dydx_v4_client.indexer.rest.constants import OrderType
-from dydx_v4_client.indexer.rest.indexer_client import IndexerClient  # Correct IndexerClient import
+from dydx_v4_client.indexer.rest.constants import TradingRewardAggregationPeriod, OrderType
+from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
+from dydx_v4_client.network import TESTNET  # For testnet configuration
 from constants import DYDX_ADDRESS, ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
@@ -12,12 +12,13 @@ from func_public import get_candles_recent
 from func_private import get_open_positions, get_account
 from func_bot_agent import BotAgent
 import pandas as pd
+import asyncio
 
-# Initialize IndexerClient with proper configuration (using testnet as an example)
-client = IndexerClient(
-    network_id=1,  # 1 for mainnet, change as needed
-    host="https://api.your-endpoint.com",  # Replace with your actual indexer API endpoint
-)
+# Initialize IndexerClient for testnet or mainnet
+client = IndexerClient(TESTNET.rest_indexer)  # Replace TESTNET with your mainnet if needed
+
+# Define test address (replace with your real address)
+test_address = DYDX_ADDRESS
 
 # Refine or remove IGNORE_ASSETS if not necessary
 IGNORE_ASSETS = ["", ""]  # Example of assets you want to ignore
@@ -145,3 +146,22 @@ async def open_positions(client):
 
     # Save agents to the file
     print("Success: All open trades checked")
+
+# Main function to fetch account data
+async def test_account():
+    try:
+        response = await client.account.get_subaccounts(test_address)
+        subaccounts = response["subaccounts"]
+        print(f"Subaccounts: {subaccounts}")
+        if subaccounts is None:
+            print("Subaccounts is None")
+        else:
+            print(f"Number of subaccounts: {len(subaccounts)}")
+            if len(subaccounts) > 0:
+                subaccount0 = subaccounts[0]
+                subaccount_number = subaccount0["subaccountNumber"]
+                print(f"Subaccount number: {subaccount_number}")
+    except Exception as e:
+        print(f"Error: {e}")
+
+asyncio.run(test_account())
