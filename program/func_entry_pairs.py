@@ -25,7 +25,7 @@ IGNORE_ASSETS = ["", ""]  # Example of assets you want to ignore
 async def fetch_market_data(client, market):
     try:
         # Fetch perpetual markets using the correct method (getPerpetualMarket)
-        response = await client.markets.getPerpetualMarket(market)
+        response = await client.getPerpetualMarket(market)  # Correct direct call to client
         return response
     except Exception as e:
         print(f"Error fetching market data for {market}: {e}")
