@@ -44,21 +44,27 @@ async def place_market_order_v4(node, wallet, market_id, side, size):
     wallet.sequence += 1
     return transaction
 
-async def get_account_balance_v4(node, wallet_address):
+async def get_balance_info(node, wallet_address):
     """
-    Fetch account balance using the v4 API structure via NodeClient.
+    Fetch the correct balance information using the NodeClient.
+    This fetches all balance-related details.
     """
-    # Fetch account details using the NodeClient
+    # Fetch the account information
     account_info = await node.get_account(wallet_address)
 
-    # Debug: Print out the entire account_info response
+    # Debug: Print the entire account response to understand the structure
     print("Account Info Response: ", account_info)
 
-    # Attempt to access the free collateral, or log if not found
-    if hasattr(account_info, "free_collateral"):
-        free_collateral = float(account_info.free_collateral)
+    # We now need to fetch balance separately (depends on dYdX balance handling)
+    balances = await node.get_balances(wallet_address)  # Hypothetical method to retrieve balances
+    print("Balances Info: ", balances)
+
+    # Extract the balance information from the response
+    # Adjust this based on the actual structure returned by `get_balances`
+    if hasattr(balances, "total_free_balance"):
+        free_collateral = float(balances.total_free_balance)
     else:
-        raise ValueError("free_collateral attribute not found in account_info")
+        raise ValueError("total_free_balance attribute not found in balance info")
 
     return free_collateral
 
@@ -167,8 +173,8 @@ async def open_positions(client):
                         # Wallet initialization (from mnemonic)
                         wallet = await Wallet.from_mnemonic(node, SECRET_PHRASE, DYDX_ADDRESS)
 
-                        # Fetch account balance using NodeClient
-                        free_collateral = await get_account_balance_v4(node, wallet.address)
+                        # Fetch balance info using NodeClient
+                        free_collateral = await get_balance_info(node, wallet.address)
                         print(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
 
                         # Guard: Ensure collateral
