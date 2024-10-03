@@ -24,9 +24,9 @@ IGNORE_ASSETS = ["", ""]  # Example of assets you want to ignore
 # Fetch market data using the correct method
 async def fetch_market_data(client, market):
     try:
-        # Fetch perpetual markets using the correct method (getMarkets)
-        market_data = await client.getMarkets()
-        return market_data.get(market)  # Get the specific market data from the list
+        # Fetch perpetual markets using the correct method (getPerpetualMarket)
+        response = await client.markets.getPerpetualMarket(market)
+        return response
     except Exception as e:
         print(f"Error fetching market data for {market}: {e}")
         return None
@@ -160,7 +160,7 @@ async def open_positions(client):
 # Main function to fetch account data
 async def test_account():
     try:
-        response = await client.account.get_subaccounts(test_address)
+        response = await client.account.getSubaccounts(test_address)
         subaccounts = response["subaccounts"]
         print(f"Subaccounts: {subaccounts}")
         if subaccounts is None:
