@@ -1,8 +1,9 @@
-from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL, DYDX_ADDRESS, SECRET_PHRASE
+from decouple import config  # Ensure this is used to load environment variables
+from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
 from func_public import get_candles_recent, get_markets
-from func_private import is_open_positions
+from func_private import is_open_positions, get_account
 from func_bot_agent import BotAgent
 import pandas as pd
 import json
@@ -12,16 +13,24 @@ from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
 from dydx_v4_client.node.market import Market
 from dydx_v4_client import MAX_CLIENT_ID, OrderFlags
 from dydx_v4_client.indexer.rest.constants import OrderType
-from dydx_v4_client.network import TESTNET
 import random
 
-IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]
+from pprint import pprint
 
-async def place_market_order_v4(node, wallet, market_id, side, size):
+IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
+
+# Load environment variables from .env
+DYDX_TEST_MNEMONIC = config("DYDX_TEST_MNEMONIC")
+DYDX_ADDRESS = config("DYDX_ADDRESS")
+
+async def place_market_order_v4(client, wallet, market_id, side, size):
     """
     Updated function to place a market order using the v4 structure.
     """
-    market = Market((await node.markets.get_perpetual_markets(market_id))["markets"][market_id])
+    node = await NodeClient.connect(client.node)
+    indexer = IndexerClient(client.rest_indexer)
+
+    market = Market((await indexer.markets.get_perpetual_markets(market_id))["markets"][market_id])
 
     order_id = market.order_id(wallet.address, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
 
@@ -44,7 +53,7 @@ async def place_market_order_v4(node, wallet, market_id, side, size):
 
 async def get_account_balance(node, wallet_address):
     """
-    Fetch the account balance correctly using the NodeClient.
+    Fetch the account balance correctly using the NodeClient and handle missing balance attributes.
     """
     # Fetch the account information from the node
     account_info = await node.get_account(wallet_address)
@@ -52,13 +61,22 @@ async def get_account_balance(node, wallet_address):
     # Print account info for debugging
     print("Account Info Response:", account_info)
 
-    # Assuming there is a balances field, adjust the extraction according to the structure
+    # Check if the expected balance field is present
     if hasattr(account_info, "balances"):
-        free_balance = float(account_info.balances["available"])  # Adjust this field based on actual response
+        # Adjust this based on how the actual balance structure is formatted in the v4 API
+        free_balance = float(account_info.balances["available"])  # Adjust based on actual response format
+    elif hasattr(account_info, "account"):
+        # In case the structure is nested, check another possible structure
+        if hasattr(account_info.account, "balances"):
+            free_balance = float(account_info.account.balances["available"])  # Adjust this as needed
+        else:
+            raise ValueError("Account balance information not found in account info")
     else:
+        # Handle the case where the expected fields are not found
         raise ValueError("Account balance information not found in account info")
 
     return free_balance
+
 
 # Open positions
 async def open_positions(client):
@@ -70,9 +88,6 @@ async def open_positions(client):
 
     # Load cointegrated pairs
     df = pd.read_csv("cointegrated_pairs.csv")
-
-    # Initialize NodeClient for TESTNET
-    node = await NodeClient.connect(TESTNET.node)
 
     # Get markets for reference (min order size, tick size, etc.)
     markets = await get_markets(client)
@@ -162,20 +177,19 @@ async def open_positions(client):
                     # If checks pass, place trades
                     if check_base and check_quote:
 
-                        # Wallet initialization (from mnemonic)
-                        wallet = await Wallet.from_mnemonic(node, SECRET_PHRASE, DYDX_ADDRESS)
-
-                        # Fetch account balance info
-                        free_balance = await get_account_balance(node, wallet.address)
-                        print(f"Balance: {free_balance} and minimum at {USD_MIN_COLLATERAL}")
+                        # Check account balance
+                        node = await NodeClient.connect(client.node)
+                        wallet = await Wallet.from_mnemonic(node, DYDX_TEST_MNEMONIC, DYDX_ADDRESS)
+                        free_collateral = await get_account_balance(node, wallet.address)
+                        print(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
 
                         # Guard: Ensure collateral
-                        if free_balance < USD_MIN_COLLATERAL:
+                        if free_collateral < USD_MIN_COLLATERAL:
                             break
 
                         # Place Base Market Order
                         base_order_transaction = await place_market_order_v4(
-                            node,
+                            client,
                             wallet,
                             market_id=base_market,
                             side=base_side,
@@ -184,7 +198,7 @@ async def open_positions(client):
 
                         # Place Quote Market Order
                         quote_order_transaction = await place_market_order_v4(
-                            node,
+                            client,
                             wallet,
                             market_id=quote_market,
                             side=quote_side,
@@ -222,7 +236,7 @@ async def open_positions(client):
                         if bot_open_dict["pair_status"] == "LIVE":
                             # Append to list of bot agents
                             bot_agents.append(bot_open_dict)
-                            del(bot_open_dict)
+                            del (bot_open_dict)
 
                             # Save trade
                             with open("bot_agents.json", "w") as f:
