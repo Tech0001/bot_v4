@@ -10,6 +10,7 @@ import asyncio
 
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
 
+
 async def close_open_positions(client):
     """
     Close any open positions on startup.
@@ -20,15 +21,16 @@ async def close_open_positions(client):
     await asyncio.sleep(1)  # Simulate time taken to close positions
     print("Finished closing open positions.")
 
+
 async def manage_exits(client):
     """
     Manage existing open positions for exit opportunities.
     """
     print("Managing exits...")
     # Logic to manage open positions and check for exits
-    # (Fill this part with your logic if needed)
     await asyncio.sleep(1)  # Simulate time taken to manage exits
     print("Finished managing exits.")
+
 
 async def find_trading_opportunities(client):
     """
@@ -167,12 +169,11 @@ async def find_trading_opportunities(client):
         # Sleep for a short interval to avoid rapid looping
         await asyncio.sleep(10)  # Adjust as needed
 
-# Main bot execution
+
 async def start_bot(client):
     """
     Start the bot by closing open positions, managing exits once, then finding trading opportunities in a loop.
     """
-
     # Close open positions once on startup
     await close_open_positions(client)
 
