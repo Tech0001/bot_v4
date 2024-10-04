@@ -69,11 +69,13 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         ),
     )
 
-    # Handle response if it's a `BroadcastTxResponse` object
-    if isinstance(order, dict) and 'order_id' in order:
-        return {"status": "success", "order_id": order['order_id']}
+    # Check if tx_response is in the order object
+    if hasattr(order, "tx_response"):
+        if order.tx_response.raw_log == "[]":
+            return {"status": "failed", "error": "Transaction failed: Empty raw_log"}
+        return {"status": "success", "order_id": order.tx_response.txhash}
     else:
-        return {"status": "failed", "error": order}
+        return {"status": "failed", "error": "No tx_response found in order"}
 
 # Cancel all open orders
 async def cancel_all_orders(client):
