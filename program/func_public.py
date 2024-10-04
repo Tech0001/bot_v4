@@ -5,22 +5,61 @@ from constants import DYDX_ADDRESS, RESOLUTION
 from func_utils import format_number, get_ISO_times
 import random
 import time
-import json
 import numpy as np
 import pandas as pd
 
 ISO_TIMES = get_ISO_times()
 
+# Get Recent Candles
+async def get_candles_recent(client, market):
+    close_prices = []
+    time.sleep(0.2)  # Rate-limiting to avoid API overload
+    response = await client.indexer.markets.get_perpetual_market_candles(
+        market=market,
+        resolution=RESOLUTION
+    )
+    candles = response["candles"]
+    for candle in candles:
+        close_prices.append(candle["close"])
+    close_prices.reverse()  # Reverse to maintain chronological order
+    return np.array(close_prices).astype(np.float64)
+
+# Get Historical Candles
+async def get_candles_historical(client, market):
+    close_prices = []
+    for timeframe in ISO_TIMES.keys():
+        tf_obj = ISO_TIMES[timeframe]
+        from_iso = tf_obj["from_iso"] + ".000Z"
+        to_iso = tf_obj["to_iso"] + ".000Z"
+        time.sleep(0.2)  # Rate-limiting for API
+        response = await client.indexer.markets.get_perpetual_market_candles(
+            market=market,
+            resolution=RESOLUTION,
+            from_iso=from_iso,
+            to_iso=to_iso,
+            limit=100
+        )
+        candles = response["candles"]
+        for candle in candles:
+            close_prices.append({"datetime": candle["startedAt"], market: candle["close"]})
+    close_prices.reverse()
+    return close_prices
+
 # Fetch market prices directly for cointegration calculation
 async def fetch_market_prices(client):
     try:
+        # Fetch all markets data from the perpetual markets
         response = await client.indexer.markets.get_perpetual_markets()
         markets_data = response["markets"]
 
-        # Extract close prices from market data for each asset
+        # Initialize a dictionary to store close prices for each market
         prices_dict = {}
+
+        # Fetch recent candles for each active market
         for market in markets_data:
+            print(f"Fetching recent prices for market: {market}")
             prices_dict[market] = await get_candles_recent(client, market)
+            time.sleep(0.2)  # Adding rate-limiting between requests
 
         # Convert the prices dictionary into a DataFrame for easy manipulation
         df_market_prices = pd.DataFrame(prices_dict)
@@ -99,38 +138,3 @@ async def place_market_order(client, market, side, size, price, reduce_only):
     except Exception as e:
         print(f"Error placing market order: {e}")
         return None
-
-# Get Recent Candles
-async def get_candles_recent(client, market):
-    close_prices = []
-    time.sleep(0.2)
-    response = await client.indexer.markets.get_perpetual_market_candles(
-        market=market,
-        resolution=RESOLUTION
-    )
-    candles = response
-    for candle in candles["candles"]:
-        close_prices.append(candle["close"])
-    close_prices.reverse()
-    return np.array(close_prices).astype(np.float64)
-
-# Get Historical Candles
-async def get_candles_historical(client, market):
-    close_prices = []
-    for timeframe in ISO_TIMES.keys():
-        tf_obj = ISO_TIMES[timeframe]
-        from_iso = tf_obj["from_iso"] + ".000Z"
-        to_iso = tf_obj["to_iso"] + ".000Z"
-        time.sleep(0.2)
-        response = await client.indexer.markets.get_perpetual_market_candles(
-            market=market,
-            resolution=RESOLUTION,
-            from_iso=from_iso,
-            to_iso=to_iso,
-            limit=100
-        )
-        candles = response
-        for candle in candles["candles"]:
-            close_prices.append({"datetime": candle["startedAt"], market: candle["close"]})
-    close_prices.reverse()
-    return close_prices
