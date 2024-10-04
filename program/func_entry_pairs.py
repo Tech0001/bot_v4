@@ -13,18 +13,18 @@ from dydx_v4_client.node.market import Market
 from dydx_v4_client import MAX_CLIENT_ID, OrderFlags
 from dydx_v4_client.indexer.rest.constants import OrderType
 import random
+import asyncio
 
 from pprint import pprint
 
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
 
-
-async def place_market_order_v4(node, wallet, market_id, side, size):
+async def place_market_order_v4(node_client, wallet, market_id, side, size):
     """
     Function to place a market order using the v4 structure.
     """
-    # Initialize IndexerClient using node
-    indexer = IndexerClient(node)
+    # Initialize IndexerClient using node_client
+    indexer = IndexerClient(node_client)
 
     # Fetch market data
     market_data = await indexer.markets.get_perpetual_markets(market_id)
@@ -33,7 +33,7 @@ async def place_market_order_v4(node, wallet, market_id, side, size):
     # Generate the order ID and set the block height for the order
     order_id = market.order_id(wallet.address, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
 
-    current_block = await node.latest_block_height()
+    current_block = await node_client.latest_block_height()
 
     # Create the market order
     new_order = market.order(
@@ -48,7 +48,7 @@ async def place_market_order_v4(node, wallet, market_id, side, size):
     )
 
     # Place the market order
-    transaction = await node.place_order(wallet=wallet, order=new_order)
+    transaction = await node_client.place_order(wallet=wallet, order=new_order)
     wallet.sequence += 1
     return transaction
 
@@ -218,24 +218,24 @@ async def open_positions(node_client):
                             hedge_ratio=hedge_ratio
                         )
 
-                        # Open trades
+                        # Open trades with the BotAgent
                         bot_open_dict = await bot_agent.open_trades()
 
-                        # Handle trade failures
+                        # Handle success or failure of the trade
                         if bot_open_dict == "failed":
                             continue
 
-                        # If trades are live, save them
+                        # If the trade is successful, store it in the list
                         if bot_open_dict["pair_status"] == "LIVE":
                             bot_agents.append(bot_open_dict)
-                            del(bot_open_dict)
+                            del bot_open_dict
 
-                            # Save the trade information
+                            # Save trades to a JSON file
                             with open("bot_agents.json", "w") as f:
                                 json.dump(bot_agents, f)
 
                             print("Trade status: Live")
                             print("---")
 
-    # Save agents
+    # Save the final bot agents after the loop completes
     print(f"Success: Manage open trades checked")
