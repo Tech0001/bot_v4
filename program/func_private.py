@@ -67,7 +67,13 @@ async def place_market_order(client, market, side, size, price, reduce_only):
             good_til_block=good_til_block
         ),
     )
-    return order
+
+    # Ensure the order response is valid and return order details
+    if order.code != 0:  # Assuming 0 means success, adjust as per API response
+        print(f"Error placing order for {ticker}: {order.log}")
+        return None
+
+    return order.tx_response.tx_hash  # Assuming tx_response contains transaction details, adjust as needed
 
 # Cancel all open orders
 async def cancel_all_orders(client):
