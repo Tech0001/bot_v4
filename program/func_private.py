@@ -50,19 +50,8 @@ async def is_open_positions(client, market):
         return True
     return False
 
-# Validate Order Size, Price, and Other Parameters
-def validate_order_params(ticker, size, price, side):
-    if not price or price <= 0:
-        raise ValueError(f"Invalid price for {ticker}: {price}")
-    if not size or size <= 0:
-        raise ValueError(f"Invalid size for {ticker}: {size}")
-    if side not in ["BUY", "SELL"]:
-        raise ValueError(f"Invalid side for {ticker}: {side}")
-
 # Place Market Order with Retry Logic and Backoff Strategy
 async def place_market_order(client, ticker, side, size, price, reduce_only):
-    validate_order_params(ticker, size, price, side)  # Validate before placing orders
-    
     for attempt in range(MAX_RETRY_ATTEMPTS):
         try:
             current_block = await client.node.latest_block_height()
@@ -85,17 +74,13 @@ async def place_market_order(client, ticker, side, size, price, reduce_only):
                 ),
             )
 
-            # Check for a valid tx_response
-            if hasattr(order, "tx_response"):
+            # Handling the tx_response properly
+            if hasattr(order, "tx_response") and hasattr(order.tx_response, "raw_log"):
                 if order.tx_response.raw_log == "[]":
                     raise ValueError("Transaction failed: Empty raw_log")
                 return {"status": "success", "order_id": order.tx_response.txhash}
             else:
-                raise ValueError("No tx_response found in order")
-
-        except ValueError as ve:
-            print(f"Validation Error: {ve}")
-            return {"status": "failed", "error": str(ve)}
+                raise ValueError("Invalid order response: No tx_response or raw_log found")
 
         except Exception as e:
             print(f"Error placing order attempt {attempt + 1}/{MAX_RETRY_ATTEMPTS}: {e}")
