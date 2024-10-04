@@ -3,7 +3,7 @@ import time
 from constants import ABORT_ALL_POSITIONS, FIND_COINTEGRATED, PLACE_TRADES, MANAGE_EXITS
 from func_connections import connect_dydx
 from func_private import abort_all_positions
-from func_public import construct_market_prices
+from func_public import get_markets
 from func_cointegration import store_cointegration_results
 from func_exit_pairs import manage_trade_exits
 from func_entry_pairs import open_positions
@@ -39,7 +39,7 @@ async def main():
     if FIND_COINTEGRATED:
         try:
             print("\nFetching token market prices...")
-            df_market_prices = await construct_market_prices(client)
+            df_market_prices = await get_markets(client)
             print(df_market_prices)
         except Exception as e:
             print("Error constructing market prices: ", e)

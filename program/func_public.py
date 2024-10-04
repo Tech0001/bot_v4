@@ -3,7 +3,6 @@ from dydx_v4_client.node.market import Market
 from dydx_v4_client.indexer.rest.constants import OrderType
 from constants import DYDX_ADDRESS
 from func_utils import format_number
-from func_public import get_markets
 import random
 import time
 import json
@@ -16,7 +15,7 @@ async def cancel_order(client, order_id):
     market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
     current_block = await client.node.latest_block_height()
     good_til_block = current_block + 1 + 10
-    cancel = await client.node.cancel_order(
+    await client.node.cancel_order(
         client.wallet,
         market_order_id,
         good_til_block=good_til_block
@@ -42,9 +41,7 @@ async def is_open_positions(client, market):
     time.sleep(0.2)
     response = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
     open_positions = response["subaccount"]["openPerpetualPositions"]
-    if market in open_positions.keys():
-        return True
-    return False
+    return market in open_positions.keys()
 
 # Place Market Order
 async def place_market_order(client, market, side, size, price, reduce_only):
@@ -100,7 +97,7 @@ async def abort_all_positions(client):
     positions = await get_open_positions(client)
 
     # Handle open positions
-    if len(positions) > 0:
+    if positions:
         for item in positions.keys():
             pos = positions[item]
             market = pos["market"]
@@ -127,3 +124,13 @@ async def check_order_status(client, order_id):
     if "status" in order:
         return order["status"]
     return "UNKNOWN"
+
+# Fetch Market Data
+async def get_markets(client):
+    """Fetches all market data available."""
+    try:
+        response = await client.indexer.markets.get_perpetual_markets()
+        return response["markets"]
+    except Exception as e:
+        print(f"Error fetching market data: {e}")
+        return {}
