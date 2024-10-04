@@ -48,30 +48,32 @@ async def is_open_positions(client, market):
 
 # Place Market Order
 async def place_market_order(client, market, side, size, price, reduce_only):
-    try:
-        ticker = market
-        current_block = await client.node.latest_block_height()
-        market = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
-        market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
-        good_til_block = current_block + 1 + 10
+    ticker = market
+    current_block = await client.node.latest_block_height()
+    market = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
+    market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
+    good_til_block = current_block + 1 + 10
 
-        order = await client.node.place_order(
-            client.wallet,
-            market.order(
-                market_order_id,
-                order_type=OrderType.MARKET,
-                side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
-                size=float(size),
-                price=float(price),
-                time_in_force=Order.TIME_IN_FORCE_UNSPECIFIED,
-                reduce_only=reduce_only,
-                good_til_block=good_til_block
-            ),
-        )
-        return {"order_id": market_order_id, "status": "success", "order": order}
-    except Exception as e:
-        print(f"Error placing order: {e}")
-        return {"status": "failed", "error": str(e)}
+    # Place Market Order
+    order = await client.node.place_order(
+        client.wallet,
+        market.order(
+            market_order_id,
+            order_type=OrderType.MARKET,
+            side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
+            size=float(size),
+            price=float(price),
+            time_in_force=Order.TIME_IN_FORCE_UNSPECIFIED,
+            reduce_only=reduce_only,
+            good_til_block=good_til_block
+        ),
+    )
+
+    # Process the order and return relevant information
+    if 'order_id' in order:
+        return {"status": "success", "order_id": order['order_id']}
+    else:
+        return {"status": "failed", "error": order}
 
 # Cancel all open orders
 async def cancel_all_orders(client):
