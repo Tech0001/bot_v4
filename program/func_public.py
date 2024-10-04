@@ -3,6 +3,7 @@ from dydx_v4_client.node.market import Market
 from dydx_v4_client.indexer.rest.constants import OrderType
 from constants import DYDX_ADDRESS
 from func_utils import format_number
+from func_public import get_markets
 import random
 import time
 import json
@@ -46,7 +47,6 @@ async def is_open_positions(client, market):
 # Place Market Order
 async def place_market_order(client, market, side, size, price, reduce_only):
     try:
-        # Ensure values are floats for comparison
         size = float(size)
         price = float(price)
 
@@ -63,14 +63,13 @@ async def place_market_order(client, market, side, size, price, reduce_only):
                 market_order_id,
                 order_type=OrderType.MARKET,
                 side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
-                size=size,  # Correct float size
-                price=price,  # Correct float price
+                size=size,
+                price=price,
                 time_in_force=Order.TIME_IN_FORCE_UNSPECIFIED,
                 reduce_only=reduce_only,
                 good_til_block=good_til_block
             ),
         )
-
         return order
 
     except Exception as e:
@@ -87,7 +86,6 @@ async def cancel_all_orders(client):
 
 # Abort all open positions
 async def abort_all_positions(client):
-    # Cancel all orders
     await cancel_all_orders(client)
     
     # Get markets for reference of tick size
@@ -96,8 +94,7 @@ async def abort_all_positions(client):
     # Get all open positions
     positions = await get_open_positions(client)
 
-    # Handle open positions
-    if positions:
+    if len(positions) > 0:
         for item in positions.keys():
             pos = positions[item]
             market = pos["market"]
@@ -124,13 +121,3 @@ async def check_order_status(client, order_id):
     if "status" in order:
         return order["status"]
     return "UNKNOWN"
-
-# Fetch Market Data
-async def get_markets(client):
-    """Fetches all market data available."""
-    try:
-        response = await client.indexer.markets.get_perpetual_markets()
-        return response["markets"]
-    except Exception as e:
-        print(f"Error fetching market data: {e}")
-        return {}
