@@ -3,7 +3,6 @@ from dydx_v4_client.node.market import Market
 from dydx_v4_client.indexer.rest.constants import OrderType
 from constants import DYDX_ADDRESS
 from func_utils import format_number
-from func_public import get_markets
 import random
 import time
 import json
@@ -114,6 +113,16 @@ async def abort_all_positions(client):
         # Clear saved agents after aborting all positions
         with open("bot_agents.json", "w") as f:
             json.dump([], f)
+
+# Get Markets
+async def get_markets(client):
+    """ Function to get all available markets from the indexer. """
+    try:
+        markets = await client.indexer.markets.get_perpetual_markets()
+        return markets
+    except Exception as e:
+        print(f"Error fetching markets: {e}")
+        return {}
 
 # Check Order Status
 async def check_order_status(client, order_id):
