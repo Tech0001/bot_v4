@@ -6,28 +6,20 @@ from func_private import is_open_positions, get_account
 from func_bot_agent import BotAgent
 import pandas as pd
 import json
-import logging
-
-from pprint import pprint
 
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
-
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
 
 # Open positions
 async def open_positions(client):
     """
-    Manage finding triggers for trade entry
-    Store trades for managing later on for the exit function
+    Manage finding triggers for trade entry.
+    Store trades for managing later on for the exit function.
     """
 
-    logging.debug("Loading cointegrated pairs from CSV")
     # Load cointegrated pairs
     df = pd.read_csv("cointegrated_pairs.csv")
 
-    logging.debug("Fetching market data")
-    # Get markets from referencing of min order size, tick size etc
+    # Get markets for reference (min order size, tick size, etc.)
     markets = await get_markets(client)
 
     # Initialize container for BotAgent results
@@ -35,21 +27,17 @@ async def open_positions(client):
 
     # Opening JSON file
     try:
-        logging.debug("Loading existing bot agents from JSON file")
         with open("bot_agents.json", "r") as open_positions_file:
             open_positions_dict = json.load(open_positions_file)
             for p in open_positions_dict:
                 bot_agents.append(p)
     except FileNotFoundError:
-        logging.debug("No existing bot agents found, starting fresh")
         bot_agents = []
-    except Exception as e:
-        logging.error(f"Error loading bot agents: {e}")
+    except Exception:
         bot_agents = []
 
     # Find ZScore triggers
     for index, row in df.iterrows():
-        logging.debug(f"Processing row {index}: {row}")
 
         # Extract variables
         base_market = row["base_market"]
@@ -59,27 +47,22 @@ async def open_positions(client):
 
         # Continue if ignore asset
         if base_market in IGNORE_ASSETS or quote_market in IGNORE_ASSETS:
-            logging.debug(f"Ignoring asset pair: {base_market} - {quote_market}")
             continue
 
-        # Get prices
+        # Get prices with a maximum candle length of 400 hours
         try:
-            logging.debug(f"Fetching recent candles for {base_market} and {quote_market}")
-            series_1 = await get_candles_recent(client, base_market)
-            series_2 = await get_candles_recent(client, quote_market)
-        except Exception as e:
-            logging.error(f"Error fetching candles: {e}")
+            series_1 = await get_candles_recent(client, base_market, 400)
+            series_2 = await get_candles_recent(client, quote_market, 400)
+        except Exception:
             continue
 
         # Get ZScore
         if len(series_1) > 0 and len(series_1) == len(series_2):
             spread = series_1 - (hedge_ratio * series_2)
             z_score = calculate_zscore(spread).values.tolist()[-1]
-            logging.debug(f"Calculated ZScore: {z_score}")
 
             # Establish if potential trade
             if abs(z_score) >= ZSCORE_THRESH:
-                logging.debug(f"ZScore {z_score} exceeds threshold {ZSCORE_THRESH}")
 
                 # Ensure like-for-like not already open (diversify trading)
                 is_base_open = await is_open_positions(client, base_market)
@@ -87,7 +70,6 @@ async def open_positions(client):
 
                 # Place trade
                 if not is_base_open and not is_quote_open:
-                    logging.debug(f"Placing trade for pair: {base_market} - {quote_market}")
 
                     # Determine side
                     base_side = "BUY" if z_score < 0 else "SELL"
@@ -127,16 +109,13 @@ async def open_positions(client):
 
                     # If checks pass, place trades
                     if check_base and check_quote:
-                        logging.debug("Order size checks passed")
 
                         # Check account balance
                         account = await get_account(client)
                         free_collateral = float(account["freeCollateral"])
-                        logging.debug(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
 
                         # Guard: Ensure collateral
                         if free_collateral < USD_MIN_COLLATERAL:
-                            logging.error("Insufficient collateral")
                             break
 
                         # Create Bot Agent
@@ -161,12 +140,10 @@ async def open_positions(client):
 
                         # Guard: Handle failure
                         if bot_open_dict == "failed":
-                            logging.error("Failed to open trades")
                             continue
 
                         # Handle success in opening trades
                         if bot_open_dict["pair_status"] == "LIVE":
-                            logging.debug("Trade status: Live")
 
                             # Append to list of bot agents
                             bot_agents.append(bot_open_dict)
@@ -176,12 +153,7 @@ async def open_positions(client):
                             with open("bot_agents.json", "w") as f:
                                 json.dump(bot_agents, f)
 
-                            # Confirm live status in print
-                            logging.debug("Trade status: Live")
-                            logging.debug("---")
-
     # Save agents
-    logging.debug("Success: Manage open trades checked")
     # if len(bot_agents) > 0:
     #   with open("bot_agents.json", "w") as f:
     #     json.dump(bot_agents, f)
