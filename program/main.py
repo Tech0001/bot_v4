@@ -1,24 +1,24 @@
 import asyncio
-import itertools  # Import itertools for the spinner
-import sys  # Import sys for writing spinner output
+import itertools  # For the spinner functionality
+import sys  # For printing spinner output
 import time
 from constants import ABORT_ALL_POSITIONS, FIND_COINTEGRATED, PLACE_TRADES, MANAGE_EXITS
 from func_connections import connect_dydx
 from func_private import abort_all_positions, place_market_order, get_open_positions
 from func_public import construct_market_prices
 from func_cointegration import store_cointegration_results
-from func_entry_pairs import open_positions
 from func_exit_pairs import manage_trade_exits
 from func_messaging import send_message
+from func_entry_pairs import open_positions  # This import should not cause a circular import
 
 # Spinner function to indicate the bot is working
 async def spinner_task():
     spinner = itertools.cycle(['%', '%%', '%%%'])
     while True:
-        sys.stdout.write(next(spinner))  # Print spinning character
-        sys.stdout.flush()  # Ensure it prints immediately
-        sys.stdout.write('\b\b\b')  # Erase the spinner characters
-        await asyncio.sleep(0.1)  # Control the speed of the spinner
+        sys.stdout.write(next(spinner))
+        sys.stdout.flush()
+        sys.stdout.write('\b\b\b')  # Backspace to clear spinner symbols
+        await asyncio.sleep(0.1)
 
 # MAIN FUNCTION
 async def main():
@@ -81,7 +81,7 @@ async def main():
                 print("\nManaging exits...")
                 await manage_trade_exits(client)  # Manage trade exits
                 print("Finished managing exits.")
-                await asyncio.sleep(1)  # Allow time between checks
+                await asyncio.sleep(1)
             except Exception as e:
                 print("Error managing exiting positions: ", e)
                 send_message(f"Error managing exiting positions {e}")
@@ -92,7 +92,7 @@ async def main():
             try:
                 print("\nFinding trading opportunities...")
                 await open_positions(client)  # Your bot's main logic
-                await asyncio.sleep(1)  # Allow time between checks
+                await asyncio.sleep(1)
             except Exception as e:
                 print("Error trading pairs: ", e)
                 send_message(f"Error opening trades {e}")
@@ -100,7 +100,7 @@ async def main():
 
         # Cancel the spinner when any activity happens (trades or exits)
         spinner.cancel()
-        print("\n")  # Add some spacing after spinner
+        print("\n")
 
         # Pause briefly before starting the next iteration
         await asyncio.sleep(1)
