@@ -8,6 +8,9 @@ import random
 import time
 import json
 
+# Retry count constant
+MAX_RETRY_ATTEMPTS = 3
+
 # Cancel Order
 async def cancel_order(client, order_id):
     order = await get_order(client, order_id)  # Calls the get_order function
@@ -46,36 +49,46 @@ async def is_open_positions(client, market):
         return True
     return False
 
-# Place Market Order
+# Place Market Order with Retry Logic
 async def place_market_order(client, market, side, size, price, reduce_only):
-    ticker = market
-    current_block = await client.node.latest_block_height()
-    market = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
-    market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
-    good_til_block = current_block + 1 + 10
+    for attempt in range(MAX_RETRY_ATTEMPTS):
+        try:
+            ticker = market
+            current_block = await client.node.latest_block_height()
+            market = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
+            market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
+            good_til_block = current_block + 1 + 10
 
-    # Place Market Order
-    order = await client.node.place_order(
-        client.wallet,
-        market.order(
-            market_order_id,
-            order_type=OrderType.MARKET,
-            side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
-            size=float(size),
-            price=float(price),
-            time_in_force=Order.TIME_IN_FORCE_UNSPECIFIED,
-            reduce_only=reduce_only,
-            good_til_block=good_til_block
-        ),
-    )
+            # Place Market Order
+            order = await client.node.place_order(
+                client.wallet,
+                market.order(
+                    market_order_id,
+                    order_type=OrderType.MARKET,
+                    side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
+                    size=float(size),
+                    price=float(price),
+                    time_in_force=Order.TIME_IN_FORCE_UNSPECIFIED,
+                    reduce_only=reduce_only,
+                    good_til_block=good_til_block
+                ),
+            )
 
-    # Check if tx_response is in the order object
-    if hasattr(order, "tx_response"):
-        if order.tx_response.raw_log == "[]":
-            return {"status": "failed", "error": "Transaction failed: Empty raw_log"}
-        return {"status": "success", "order_id": order.tx_response.txhash}
-    else:
-        return {"status": "failed", "error": "No tx_response found in order"}
+            # Check if tx_response is in the order object
+            if hasattr(order, "tx_response"):
+                if order.tx_response.raw_log == "[]":
+                    raise ValueError("Transaction failed: Empty raw_log")
+                return {"status": "success", "order_id": order.tx_response.txhash}
+            else:
+                raise ValueError("No tx_response found in order")
+
+        except Exception as e:
+            print(f"Error placing order attempt {attempt + 1}/{MAX_RETRY_ATTEMPTS}: {e}")
+            if attempt == MAX_RETRY_ATTEMPTS - 1:
+                return {"status": "failed", "error": str(e)}
+
+        # Wait before retrying
+        time.sleep(1)
 
 # Cancel all open orders
 async def cancel_all_orders(client):
