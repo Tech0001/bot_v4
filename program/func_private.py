@@ -69,8 +69,8 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         ),
     )
 
-    # Process the order and return relevant information
-    if 'order_id' in order:
+    # Handle response if it's a `BroadcastTxResponse` object
+    if isinstance(order, dict) and 'order_id' in order:
         return {"status": "success", "order_id": order['order_id']}
     else:
         return {"status": "failed", "error": order}
@@ -104,8 +104,15 @@ async def abort_all_positions(client):
             accept_price = price * 1.7 if side == "BUY" else price * 0.3
             tick_size = markets["markets"][market]["tickSize"]
             accept_price = format_number(accept_price, tick_size)
-            await place_market_order(client, market, side, pos["sumOpen"], accept_price, True)
-        
+            
+            result = await place_market_order(client, market, side, pos["sumOpen"], accept_price, True)
+
+            if result["status"] == "failed":
+                print(f"Error closing position for {market}: {result['error']}")
+                continue
+            else:
+                print(f"Closed position for {market}: {result['order_id']}")
+
         # Clear saved agents after aborting all positions
         with open("bot_agents.json", "w") as f:
             json.dump([], f)
