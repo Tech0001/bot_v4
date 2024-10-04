@@ -127,8 +127,12 @@ async def get_markets(client):
 async def get_candles_recent(client, market):
     """ Function to fetch recent candle data for a specific market. """
     try:
-        # Corrected method name for fetching candles based on updated dYdX v4 API.
-        candles = await client.indexer.candles.get_candles(market)
+        # Correct method call to get candles from indexer.
+        candles = await client.public.get_candles(
+            market=market,
+            resolution="1HOUR",
+            limit=100
+        )
         return candles
     except Exception as e:
         print(f"Error fetching candles for {market}: {e}")
