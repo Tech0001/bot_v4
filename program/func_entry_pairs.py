@@ -23,11 +23,11 @@ async def place_market_order_v4(node_client, wallet, market_id, side, size):
     """
     Function to place a market order using the v4 structure.
     """
-    # NodeClient should not be passed directly; let's use the proper way
-    node = await NodeClient.connect(node_client)
+    # Corrected NodeClient initialization from the example
+    node = node_client  # NodeClient.connect(node_client) is not needed here based on examples
 
-    # Initialize IndexerClient using node_client as per updated course code
-    indexer = IndexerClient(node_client)
+    # Initialize IndexerClient from client (client should be a correct instance)
+    indexer = IndexerClient(node.rest_indexer)
 
     # Fetch market data
     market_data = await indexer.markets.get_perpetual_markets(market_id)
@@ -56,14 +56,13 @@ async def place_market_order_v4(node_client, wallet, market_id, side, size):
     return transaction
 
 
-# Function to retrieve the account balance information
 async def get_account_balance(indexer, address):
     """
-    Retrieves account information for a given address.
+    Retrieves account balance information for a given address using the correct API structure.
     """
     account_info = await indexer.get_account(address)
     
-    # Check if free collateral is present
+    # Properly handle the account response and check for balances
     if account_info and "balances" in account_info:
         free_collateral = float(account_info["balances"]["freeCollateral"])
         return free_collateral
@@ -71,24 +70,24 @@ async def get_account_balance(indexer, address):
         raise ValueError("Account balance information not found in account info.")
 
 
-# Open positions
-async def open_positions(client):
+# Open positions function
+async def open_positions(node_client):
 
     """
     Manage finding triggers for trade entry
-    Store trades for managing later on for exit function
+    Store trades for managing later on for the exit function
     """
 
     # Load cointegrated pairs
     df = pd.read_csv("cointegrated_pairs.csv")
 
     # Get markets for reference (min order size, tick size, etc.)
-    markets = await get_markets(client)
+    markets = await get_markets(node_client)
 
     # Initialize container for BotAgent results
     bot_agents = []
 
-    # Opening JSON file
+    # Open the JSON file containing open positions if it exists
     try:
         with open("bot_agents.json") as open_positions_file:
             open_positions_dict = json.load(open_positions_file)
@@ -97,10 +96,10 @@ async def open_positions(client):
     except FileNotFoundError:
         bot_agents = []
 
-    # Initialize the Indexer client separately
-    indexer = IndexerClient(client)
+    # Initialize the IndexerClient using the node_client's rest_indexer
+    indexer = IndexerClient(node_client.rest_indexer)
 
-    # Find ZScore triggers
+    # Loop through each row in the dataframe for trading opportunities
     for index, row in df.iterrows():
 
         # Extract variables
@@ -113,34 +112,34 @@ async def open_positions(client):
         if base_market in IGNORE_ASSETS or quote_market in IGNORE_ASSETS:
             continue
 
-        # Get prices
+        # Get prices for base and quote markets
         try:
-            series_1 = await get_candles_recent(client, base_market)
-            series_2 = await get_candles_recent(client, quote_market)
+            series_1 = await get_candles_recent(node_client, base_market)
+            series_2 = await get_candles_recent(node_client, quote_market)
         except Exception as e:
             print(e)
             continue
 
-        # Get ZScore
+        # Calculate the ZScore
         if len(series_1) > 0 and len(series_1) == len(series_2):
             spread = series_1 - (hedge_ratio * series_2)
             z_score = calculate_zscore(spread).values.tolist()[-1]
 
-            # Establish if potential trade
+            # Check if ZScore exceeds threshold
             if abs(z_score) >= ZSCORE_THRESH:
 
-                # Ensure like-for-like not already open (diversify trading)
-                is_base_open = await is_open_positions(client, base_market)
-                is_quote_open = await is_open_positions(client, quote_market)
+                # Ensure that no positions are already open for the base or quote markets
+                is_base_open = await is_open_positions(node_client, base_market)
+                is_quote_open = await is_open_positions(node_client, quote_market)
 
-                # Place trade
+                # Proceed with trade placement if neither position is already open
                 if not is_base_open and not is_quote_open:
 
-                    # Determine side
+                    # Determine buy/sell side based on ZScore
                     base_side = "BUY" if z_score < 0 else "SELL"
                     quote_side = "BUY" if z_score > 0 else "SELL"
 
-                    # Get prices and format with tick sizes
+                    # Get prices and format them according to tick sizes
                     base_price = series_1[-1]
                     quote_price = series_2[-1]
                     accept_base_price = float(base_price) * 1.01 if z_score < 0 else float(base_price) * 0.99
@@ -152,7 +151,7 @@ async def open_positions(client):
                     accept_base_price = format_number(accept_base_price, base_tick_size)
                     accept_quote_price = format_number(accept_quote_price, quote_tick_size)
 
-                    # Get size
+                    # Get size of trades based on USD_PER_TRADE
                     base_quantity = 1 / base_price * USD_PER_TRADE
                     quote_quantity = 1 / quote_price * USD_PER_TRADE
                     base_step_size = markets["markets"][base_market]["stepSize"]
@@ -162,31 +161,31 @@ async def open_positions(client):
                     base_size = format_number(base_quantity, base_step_size)
                     quote_size = format_number(quote_quantity, quote_step_size)
 
-                    # Ensure size (minimum order size > $1 according to V4 documentation)
+                    # Ensure the size is above the minimum order size
                     base_min_order_size = 1 / float(markets["markets"][base_market]["oraclePrice"])
                     quote_min_order_size = 1 / float(markets["markets"][quote_market]["oraclePrice"])
 
-                    # Combine checks
+                    # Combine checks for order sizes
                     check_base = float(base_quantity) > base_min_order_size
                     check_quote = float(quote_quantity) > quote_min_order_size
 
-                    # If checks pass, place trades
+                    # If checks pass, proceed with the trade
                     if check_base and check_quote:
 
-                        # Get the account balance
+                        # Get the account balance using the correct function
                         free_collateral = await get_account_balance(indexer, DYDX_ADDRESS)
                         print(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
 
-                        # Guard: Ensure collateral
+                        # Ensure collateral is sufficient
                         if free_collateral < USD_MIN_COLLATERAL:
                             break
 
-                        # Wallet initialization (from mnemonic)
-                        wallet = await Wallet.from_mnemonic(client, MNEMONIC, DYDX_ADDRESS)
+                        # Initialize wallet from mnemonic
+                        wallet = await Wallet.from_mnemonic(node_client, MNEMONIC, DYDX_ADDRESS)
 
                         # Place Base Market Order
                         base_order_transaction = await place_market_order_v4(
-                            client,
+                            node_client,
                             wallet,
                             market_id=base_market,
                             side=base_side,
@@ -195,7 +194,7 @@ async def open_positions(client):
 
                         # Place Quote Market Order
                         quote_order_transaction = await place_market_order_v4(
-                            client,
+                            node_client,
                             wallet,
                             market_id=quote_market,
                             side=quote_side,
@@ -206,9 +205,9 @@ async def open_positions(client):
                         print("Base Market Order Transaction:", base_order_transaction)
                         print("Quote Market Order Transaction:", quote_order_transaction)
 
-                        # Create Bot Agent
+                        # Create a BotAgent instance and store trades
                         bot_agent = BotAgent(
-                            client,
+                            node_client,
                             market_1=base_market,
                             market_2=quote_market,
                             base_side=base_side,
@@ -225,21 +224,19 @@ async def open_positions(client):
                         # Open trades
                         bot_open_dict = await bot_agent.open_trades()
 
-                        # Guard: Handle failure
+                        # Handle trade failures
                         if bot_open_dict == "failed":
                             continue
 
-                        # Handle success in opening trades
+                        # If trades are live, save them
                         if bot_open_dict["pair_status"] == "LIVE":
-                            # Append to list of bot agents
                             bot_agents.append(bot_open_dict)
                             del(bot_open_dict)
 
-                            # Save trade
+                            # Save the trade information
                             with open("bot_agents.json", "w") as f:
                                 json.dump(bot_agents, f)
 
-                            # Confirm live status
                             print("Trade status: Live")
                             print("---")
 
