@@ -124,6 +124,16 @@ async def get_markets(client):
         print(f"Error fetching markets: {e}")
         return {}
 
+# Get Recent Candles
+async def get_candles_recent(client, market):
+    """ Function to fetch recent candle data for a specific market. """
+    try:
+        candles = await client.indexer.markets.get_market_candles(market)
+        return candles
+    except Exception as e:
+        print(f"Error fetching candles for {market}: {e}")
+        return []
+    
 # Check Order Status
 async def check_order_status(client, order_id):
     order = await get_order(client, order_id)
