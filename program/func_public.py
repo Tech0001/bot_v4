@@ -1,6 +1,7 @@
-from dydx_v4_client import MAX_CLIENT_ID, Order, OrderFlags
+from dydx_v4_client import MAX_CLIENT_ID, OrderFlags
 from dydx_v4_client.node.market import Market
 from dydx_v4_client.indexer.rest.constants import OrderType
+from v4_proto.dydxprotocol.clob.order_pb2 import Order
 from constants import DYDX_ADDRESS
 from func_utils import format_number
 import random
@@ -46,6 +47,7 @@ async def is_open_positions(client, market):
 # Place Market Order
 async def place_market_order(client, market, side, size, price, reduce_only):
     try:
+        # Explicitly convert size and price to floats
         size = float(size)
         price = float(price)
 
@@ -64,7 +66,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
                 side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
                 size=size,
                 price=price,
-                time_in_force=Order.TIME_IN_FORCE_UNSPECIFIED,
+                time_in_force=Order.TimeInForce.TIME_IN_FORCE_UNSPECIFIED,
                 reduce_only=reduce_only,
                 good_til_block=good_til_block
             ),
@@ -97,12 +99,13 @@ async def abort_all_positions(client):
         for pos in positions:
             market = pos["market"]
             side = "BUY" if pos["side"] == "SHORT" else "SELL"
-            price = float(pos["entryPrice"])
+            price = float(pos["entryPrice"])  # Ensure entryPrice is converted to float
             accept_price = price * 1.7 if side == "BUY" else price * 0.3
             tick_size = markets["markets"][market]["tickSize"]
             accept_price = format_number(accept_price, tick_size)
 
-            result = await place_market_order(client, market, side, pos["openSize"], accept_price, True)
+            # Explicitly convert size to float before sending
+            result = await place_market_order(client, market, side, float(pos["openSize"]), accept_price, True)
 
             if result is None:
                 print(f"Error closing position for {market}")
