@@ -67,11 +67,14 @@ async def open_positions(client):
                     accept_base_price = float(base_price) * 1.01 if z_score < 0 else float(base_price) * 0.99
                     accept_quote_price = float(quote_price) * 1.01 if z_score > 0 else float(quote_price) * 0.99
 
+                    failsafe_base_price = float(base_price) * 0.05 if z_score < 0 else float(base_price) * 1.7
+
                     base_tick_size = markets["markets"][base_market]["tickSize"]
                     quote_tick_size = markets["markets"][quote_market]["tickSize"]
 
                     accept_base_price = format_number(accept_base_price, base_tick_size)
                     accept_quote_price = format_number(accept_quote_price, quote_tick_size)
+                    accept_failsafe_base_price = format_number(failsafe_base_price, base_tick_size)
 
                     base_quantity = 1 / base_price * USD_PER_TRADE
                     quote_quantity = 1 / quote_price * USD_PER_TRADE
@@ -89,7 +92,7 @@ async def open_positions(client):
                         print("Insufficient collateral to place the trade.")
                         break
 
-                    # Create Bot Agent
+                    # Create Bot Agent with accept_failsafe_base_price
                     bot_agent = BotAgent(
                         client,
                         market_1=base_market,
@@ -100,6 +103,7 @@ async def open_positions(client):
                         quote_side=quote_side,
                         quote_size=quote_size,
                         quote_price=accept_quote_price,
+                        accept_failsafe_base_price=accept_failsafe_base_price,  # Add this line
                         z_score=z_score,
                         half_life=half_life,
                         hedge_ratio=hedge_ratio
