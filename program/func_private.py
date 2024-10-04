@@ -6,6 +6,7 @@ from func_utils import format_number
 from func_public import get_markets
 import random
 import time
+import json
 
 # Cancel Order
 async def cancel_order(client, order_id):
@@ -60,10 +61,45 @@ async def place_market_order(client, market, side, size, price, reduce_only):
             order_type=OrderType.MARKET,
             side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
             size=float(size),
-            price=float(price), 
+            price=float(price),
             time_in_force=Order.TIME_IN_FORCE_UNSPECIFIED,
             reduce_only=reduce_only,
             good_til_block=good_til_block
         ),
     )
     return order
+
+# Cancel all open orders
+async def cancel_all_orders(client):
+    orders = await client.indexer_account.account.get_subaccount_orders(DYDX_ADDRESS, 0, status="OPEN")
+    if len(orders) > 0:
+        for order in orders:
+            await cancel_order(client, order["id"])
+            print(f"Order {order['id']} canceled.")
+
+# Abort all open positions
+async def abort_all_positions(client):
+    # Cancel all orders
+    await cancel_all_orders(client)
+    
+    # Get markets for reference of tick size
+    markets = await get_markets(client)
+
+    # Get all open positions
+    positions = await get_open_positions(client)
+
+    # Handle open positions
+    if len(positions) > 0:
+        for item in positions.keys():
+            pos = positions[item]
+            market = pos["market"]
+            side = "BUY" if pos["side"] == "SHORT" else "SELL"
+            price = float(pos["entryPrice"])
+            accept_price = price * 1.7 if side == "BUY" else price * 0.3
+            tick_size = markets["markets"][market]["tickSize"]
+            accept_price = format_number(accept_price, tick_size)
+            await place_market_order(client, market, side, pos["sumOpen"], accept_price, True)
+        
+        # Clear saved agents after aborting all positions
+        with open("bot_agents.json", "w") as f:
+            json.dump([], f)
