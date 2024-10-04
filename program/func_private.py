@@ -14,7 +14,8 @@ MAX_RETRY_ATTEMPTS = 3
 # Cancel Order
 async def cancel_order(client, order_id):
     order = await get_order(client, order_id)  # Calls the get_order function
-    market = Market((await client.indexer.markets.get_perpetual_markets(order["ticker"]))["markets"][order["ticker"]])
+    ticker = order["ticker"]
+    market = Market((await client.indexer.markets.get_perpetual_markets(ticker))["markets"][ticker])
     market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
     current_block = await client.node.latest_block_height()
     good_til_block = current_block + 1 + 10
@@ -50,12 +51,11 @@ async def is_open_positions(client, market):
     return False
 
 # Place Market Order with Retry Logic
-async def place_market_order(client, market, side, size, price, reduce_only):
+async def place_market_order(client, ticker, side, size, price, reduce_only):
     for attempt in range(MAX_RETRY_ATTEMPTS):
         try:
-            ticker = market
             current_block = await client.node.latest_block_height()
-            market = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
+            market = Market((await client.indexer.markets.get_perpetual_markets(ticker))["markets"][ticker])
             market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
             good_til_block = current_block + 1 + 10
 
