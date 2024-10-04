@@ -10,10 +10,11 @@ import json
 
 # Retry count constant
 MAX_RETRY_ATTEMPTS = 3
+BACKOFF_DELAY = 2  # Backoff delay between retries
 
 # Cancel Order
 async def cancel_order(client, order_id):
-    order = await get_order(client, order_id)  # Calls the get_order function
+    order = await get_order(client, order_id)
     ticker = order["ticker"]
     market = Market((await client.indexer.markets.get_perpetual_markets(ticker))["markets"][ticker])
     market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
@@ -28,7 +29,6 @@ async def cancel_order(client, order_id):
 
 # Get Order
 async def get_order(client, order_id):
-    """Function to get details of an order based on the order_id"""
     return await client.indexer_account.account.get_order(order_id)
 
 # Get Account
@@ -50,7 +50,7 @@ async def is_open_positions(client, market):
         return True
     return False
 
-# Place Market Order with Retry Logic
+# Place Market Order with Retry Logic and Backoff Strategy
 async def place_market_order(client, ticker, side, size, price, reduce_only):
     for attempt in range(MAX_RETRY_ATTEMPTS):
         try:
@@ -74,7 +74,7 @@ async def place_market_order(client, ticker, side, size, price, reduce_only):
                 ),
             )
 
-            # Check if tx_response is in the order object
+            # Check for a valid tx_response
             if hasattr(order, "tx_response"):
                 if order.tx_response.raw_log == "[]":
                     raise ValueError("Transaction failed: Empty raw_log")
@@ -88,7 +88,8 @@ async def place_market_order(client, ticker, side, size, price, reduce_only):
                 return {"status": "failed", "error": str(e)}
 
         # Wait before retrying
-        time.sleep(1)
+        print(f"Retrying after {BACKOFF_DELAY} seconds...")
+        time.sleep(BACKOFF_DELAY)
 
 # Cancel all open orders
 async def cancel_all_orders(client):
@@ -134,7 +135,6 @@ async def abort_all_positions(client):
 
 # Check Order Status
 async def check_order_status(client, order_id):
-    """Function to check the status of an order."""
     order = await get_order(client, order_id)
     if "status" in order:
         return order["status"]
