@@ -18,17 +18,20 @@ from pprint import pprint
 
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
 
+
 async def place_market_order_v4(node_client, wallet, market_id, side, size):
     """
-    Updated function to place a market order using the v4 structure.
+    Function to place a market order using the v4 structure.
     """
-    node = await NodeClient.connect(node_client)  # Connect to node with client passed correctly
-    
-    # Initialize the indexer client properly
+    # NodeClient should not be passed directly; let's use the proper way
+    node = await NodeClient.connect(node_client)
+
+    # Initialize IndexerClient using node_client as per updated course code
     indexer = IndexerClient(node_client)
 
-    # Fetch market data for the given market ID
-    market = Market((await indexer.markets.get_perpetual_markets(market_id))["markets"][market_id])
+    # Fetch market data
+    market_data = await indexer.markets.get_perpetual_markets(market_id)
+    market = Market(market_data["markets"][market_id])
 
     # Generate the order ID and set the block height for the order
     order_id = market.order_id(wallet.address, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
@@ -52,6 +55,7 @@ async def place_market_order_v4(node_client, wallet, market_id, side, size):
     wallet.sequence += 1
     return transaction
 
+
 # Function to retrieve the account balance information
 async def get_account_balance(indexer, address):
     """
@@ -65,6 +69,7 @@ async def get_account_balance(indexer, address):
         return free_collateral
     else:
         raise ValueError("Account balance information not found in account info.")
+
 
 # Open positions
 async def open_positions(client):
