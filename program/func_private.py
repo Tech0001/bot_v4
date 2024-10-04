@@ -1,10 +1,9 @@
 from dydx_v4_client import MAX_CLIENT_ID, OrderFlags
 from dydx_v4_client.node.market import Market
 from dydx_v4_client.indexer.rest.constants import OrderType
-from v4_proto.dydxprotocol.clob.order_pb2 import Order  # Importing Order correctly
+from v4_proto.dydxprotocol.clob.order_pb2 import Order  # Correct import for Order
 from constants import DYDX_ADDRESS
 from func_utils import format_number
-from func_public import get_markets
 import random
 import time
 import json
@@ -13,73 +12,57 @@ import json
 MAX_RETRY_ATTEMPTS = 3
 BACKOFF_DELAY = 2  # Backoff delay between retries
 
+# Get Order
+async def get_order(client, order_id):
+    return await client.indexer_account.orders.get_order_by_id(order_id)
+
 # Cancel Order
 async def cancel_order(client, order_id):
-    order = await get_order(client, order_id)  # Ensure get_order is used properly
+    order = await get_order(client, order_id)
     ticker = order["ticker"]
-    market = Market((await client.indexer.markets.get_perpetual_markets(ticker))["markets"][ticker])
+    market = Market((await client.indexer.markets.get_perpetual_markets())["markets"][ticker])
     market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
     current_block = await client.node.latest_block_height()
     good_til_block = current_block + 1 + 10
-    cancel = await client.node.cancel_order(
+    await client.node.cancel_order(
         client.wallet,
         market_order_id,
         good_til_block=good_til_block
     )
     print(f"Attempted to cancel order for: {order['ticker']}. Please check the dashboard to ensure canceled.")
 
-# Get Order
-async def get_order(client, order_id):
-    return await client.indexer_account.account.get_order(order_id)
-
-# Get Account
-async def get_account(client):
-    account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
-    return account["subaccount"]
-
-# Get Open Positions
-async def get_open_positions(client):
-    response = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
-    return response["subaccount"]["openPerpetualPositions"]
-
-# Check if Positions are Open
-async def is_open_positions(client, market):
-    time.sleep(0.2)
-    response = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
-    open_positions = response["subaccount"]["openPerpetualPositions"]
-    if market in open_positions.keys():
-        return True
-    return False
-
 # Place Market Order with Retry Logic and Backoff Strategy
 async def place_market_order(client, ticker, side, size, price, reduce_only):
     for attempt in range(MAX_RETRY_ATTEMPTS):
         try:
             current_block = await client.node.latest_block_height()
-            market = Market((await client.indexer.markets.get_perpetual_markets(ticker))["markets"][ticker])
+            market = Market((await client.indexer.markets.get_perpetual_markets())["markets"][ticker])
             market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
             good_til_block = current_block + 1 + 10
 
-            # Place Market Order
-            order = await client.node.place_order(
-                client.wallet,
-                market.order(
-                    market_order_id,
-                    order_type=OrderType.MARKET,
-                    side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
-                    size=float(size),
-                    price=float(price),
-                    time_in_force=Order.TimeInForce.TIME_IN_FORCE_UNSPECIFIED,
-                    reduce_only=reduce_only,
-                    good_til_block=good_til_block
-                ),
+            # Create a new order using the market.order() method
+            new_order = market.order(
+                order_id=market_order_id,
+                order_type=OrderType.MARKET,
+                side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
+                size=float(size),
+                price=float(price),
+                time_in_force=Order.TimeInForce.TIME_IN_FORCE_UNSPECIFIED,
+                reduce_only=reduce_only,
+                good_til_block=good_til_block
             )
 
-            # Handling the tx_response properly
-            if hasattr(order, "tx_response") and hasattr(order.tx_response, "raw_log"):
-                if order.tx_response.raw_log == "[]":
+            # Place Market Order
+            transaction = await client.node.place_order(
+                client.wallet,
+                order=new_order,
+            )
+
+            # Handling the transaction response properly
+            if hasattr(transaction, "tx_response") and hasattr(transaction.tx_response, "raw_log"):
+                if transaction.tx_response.raw_log == "[]":
                     raise ValueError("Transaction failed: Empty raw_log")
-                return {"status": "success", "order_id": order.tx_response.txhash}
+                return {"status": "success", "order_id": transaction.tx_response.txhash}
             else:
                 raise ValueError("Invalid order response: No tx_response or raw_log found")
 
@@ -94,7 +77,7 @@ async def place_market_order(client, ticker, side, size, price, reduce_only):
 
 # Cancel all open orders
 async def cancel_all_orders(client):
-    orders = await client.indexer_account.account.get_subaccount_orders(DYDX_ADDRESS, 0, status="OPEN")
+    orders = await client.indexer_account.orders.get_orders_by_account(DYDX_ADDRESS)
     if len(orders) > 0:
         for order in orders:
             await cancel_order(client, order["id"])
@@ -133,6 +116,21 @@ async def abort_all_positions(client):
         # Clear saved agents after aborting all positions
         with open("bot_agents.json", "w") as f:
             json.dump([], f)
+
+# Get Markets
+async def get_markets(client):
+    """ Function to get all available markets from the indexer. """
+    try:
+        markets = await client.indexer.markets.get_perpetual_markets()
+        return markets
+    except Exception as e:
+        print(f"Error fetching markets: {e}")
+        return {}
+
+# Get Open Positions
+async def get_open_positions(client):
+    response = await client.indexer_account.positions.get_positions_by_account(DYDX_ADDRESS)
+    return response["positions"]
 
 # Check Order Status
 async def check_order_status(client, order_id):

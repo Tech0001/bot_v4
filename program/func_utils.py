@@ -3,15 +3,9 @@ from datetime import datetime, timedelta
 # Format number
 def format_number(curr_num, match_num):
     """
-      Give current number an example of number with decimals desired
-      Function will return the correctly formatted string
+    Give current number an example of number with decimals desired
+    Function will return the correctly formatted string
     """
-    try:
-        curr_num = float(curr_num)
-        match_num = float(match_num)
-    except ValueError as e:
-        raise ValueError(f"Invalid input types for format_number: {e}")
-
     curr_num_string = f"{curr_num}"
     match_num_string = f"{match_num}"
 
@@ -25,8 +19,6 @@ def format_number(curr_num, match_num):
 
 # Format time
 def format_time(timestamp):
-    if not isinstance(timestamp, datetime):
-        raise ValueError("Timestamp must be a datetime object")
     return timestamp.replace(microsecond=0).isoformat()
 
 # Get ISO Times
@@ -58,4 +50,5 @@ def get_ISO_times():
         },
     }
 
+    # Return result
     return times_dict
