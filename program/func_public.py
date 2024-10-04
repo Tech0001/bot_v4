@@ -1,123 +1,129 @@
-from constants import RESOLUTION
-from func_utils import get_ISO_times
-import pandas as pd
-import numpy as np
+from dydx_v4_client import MAX_CLIENT_ID, Order, OrderFlags
+from dydx_v4_client.node.market import Market
+from dydx_v4_client.indexer.rest.constants import OrderType
+from constants import DYDX_ADDRESS
+from func_utils import format_number
+from func_public import get_markets
+import random
 import time
+import json
 
-from pprint import pprint
-
-# Get relevant time periods for ISO from and to
-ISO_TIMES = get_ISO_times()
-
-# Get Recent Candles
-async def get_candles_recent(client, market):
-
-  # Define output
-  close_prices = []
-
-  # Protect API
-  time.sleep(0.2)
-
-  # Get Prices from DYDX V4
-  response = await client.indexer.markets.get_perpetual_market_candles(
-    market = market, 
-    resolution = RESOLUTION
-  )
-
-  # Candles
-  candles = response
-
-  # Structure data
-  for candle in candles["candles"]:
-    close_prices.append(candle["close"])
-
-  # Construct and return close price series
-  close_prices.reverse()
-  prices_result = np.array(close_prices).astype(np.float64)
-  return prices_result
-
-
-# Get Historical Candles
-async def get_candles_historical(client, market):
-
-  # Define output
-  close_prices = []
-
-  # Extract historical price data for each timeframe
-  for timeframe in ISO_TIMES.keys():
-
-    # Confirm times needed
-    tf_obj = ISO_TIMES[timeframe]
-    from_iso = tf_obj["from_iso"] + ".000Z"
-    to_iso = tf_obj["to_iso"] + ".000Z"
-
-    # Protect rate limits
-    time.sleep(0.2)
-
-    response = await client.indexer.markets.get_perpetual_market_candles(
-      market = market, 
-      resolution = RESOLUTION, 
-      from_iso = from_iso,
-      to_iso = to_iso,
-      limit = 100
+# Cancel Order
+async def cancel_order(client, order_id):
+    order = await get_order(client, order_id)
+    ticker = order["ticker"]
+    market = Market((await client.indexer.markets.get_perpetual_markets(ticker))["markets"][ticker])
+    market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
+    current_block = await client.node.latest_block_height()
+    good_til_block = current_block + 1 + 10
+    cancel = await client.node.cancel_order(
+        client.wallet,
+        market_order_id,
+        good_til_block=good_til_block
     )
+    print(f"Attempted to cancel order for: {order['ticker']}. Please check the dashboard to ensure canceled.")
 
-    candles = response
+# Get Order
+async def get_order(client, order_id):
+    return await client.indexer_account.account.get_order(order_id)
 
-    # Structure data
-    for candle in candles["candles"]:
-      close_prices.append({"datetime": candle["startedAt"], market: candle["close"] })
+# Get Account
+async def get_account(client):
+    account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
+    return account["subaccount"]
 
-  # Construct and return DataFrame
-  close_prices.reverse()
-  return close_prices
+# Get Open Positions
+async def get_open_positions(client):
+    response = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
+    return response["subaccount"]["openPerpetualPositions"]
 
+# Check if Positions are Open
+async def is_open_positions(client, market):
+    time.sleep(0.2)
+    response = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
+    open_positions = response["subaccount"]["openPerpetualPositions"]
+    if market in open_positions.keys():
+        return True
+    return False
 
-# Get Markets
-async def get_markets(client):
-  return await client.indexer.markets.get_perpetual_markets()
-
-
-# Construct market prices
-async def construct_market_prices(client):
-
-  # Ensure only Testnet Assets are used
-
-  # Declare variables
-  tradeable_markets = []
-  markets = await get_markets(client)
-
-  # Find tradeable pairs
-  for market in markets["markets"].keys():
-    market_info = markets["markets"][market]
-    if market_info["status"] == "ACTIVE":
-      tradeable_markets.append(market)
-
-  # Set initial DateFrame
-  close_prices = await get_candles_historical(client, tradeable_markets[0])
-  df = pd.DataFrame(close_prices)
-  df.set_index("datetime", inplace=True)
-
-  # Append other prices to DataFrame
-  # You can limit the amount to loop though here to save time in development
-  for (i, market) in enumerate(tradeable_markets[0:]):
-    print(f"Extracting prices for {i + 1} of {len(tradeable_markets)} tokens for {market}")
-    close_prices_add = await get_candles_historical(client, market)
-    df_add = pd.DataFrame(close_prices_add)
+# Place Market Order
+async def place_market_order(client, market, side, size, price, reduce_only):
     try:
-      df_add.set_index("datetime", inplace=True)
-      df = pd.merge(df, df_add, how="outer", on="datetime", copy=False)
-      # print(df.head())
-    except Exception as e: 
-      print(f"Failed to add {market} - {e}")
-    del df_add
+        # Ensure values are floats for comparison
+        size = float(size)
+        price = float(price)
 
-  # Check any columns with NaNs
-  nans = df.columns[df.isna().any()].tolist()
-  if len(nans) > 0:
-    print("Dropping columns: ")
-    print(nans)
-    df.drop(columns=nans, inplace=True)
+        ticker = market
+        current_block = await client.node.latest_block_height()
+        market = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
+        market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
+        good_til_block = current_block + 1 + 10
 
-  # Return result
-  return df
+        # Place Market Order
+        order = await client.node.place_order(
+            client.wallet,
+            market.order(
+                market_order_id,
+                order_type=OrderType.MARKET,
+                side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
+                size=size,  # Correct float size
+                price=price,  # Correct float price
+                time_in_force=Order.TIME_IN_FORCE_UNSPECIFIED,
+                reduce_only=reduce_only,
+                good_til_block=good_til_block
+            ),
+        )
+
+        return order
+
+    except Exception as e:
+        print(f"Error placing market order: {e}")
+        return None
+
+# Cancel all open orders
+async def cancel_all_orders(client):
+    orders = await client.indexer_account.account.get_subaccount_orders(DYDX_ADDRESS, 0, status="OPEN")
+    if len(orders) > 0:
+        for order in orders:
+            await cancel_order(client, order["id"])
+            print(f"Order {order['id']} canceled.")
+
+# Abort all open positions
+async def abort_all_positions(client):
+    # Cancel all orders
+    await cancel_all_orders(client)
+    
+    # Get markets for reference of tick size
+    markets = await get_markets(client)
+
+    # Get all open positions
+    positions = await get_open_positions(client)
+
+    # Handle open positions
+    if len(positions) > 0:
+        for item in positions.keys():
+            pos = positions[item]
+            market = pos["market"]
+            side = "BUY" if pos["side"] == "SHORT" else "SELL"
+            price = float(pos["entryPrice"])
+            accept_price = price * 1.7 if side == "BUY" else price * 0.3
+            tick_size = markets["markets"][market]["tickSize"]
+            accept_price = format_number(accept_price, tick_size)
+
+            result = await place_market_order(client, market, side, pos["sumOpen"], accept_price, True)
+
+            if result is None:
+                print(f"Error closing position for {market}")
+            else:
+                print(f"Closed position for {market}")
+
+        # Clear saved agents after aborting all positions
+        with open("bot_agents.json", "w") as f:
+            json.dump([], f)
+
+# Check Order Status
+async def check_order_status(client, order_id):
+    order = await get_order(client, order_id)
+    if "status" in order:
+        return order["status"]
+    return "UNKNOWN"
