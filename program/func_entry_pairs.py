@@ -2,7 +2,7 @@ from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
 from func_public import get_candles_recent, get_markets
-from func_private import is_open_positions, get_account
+from func_private import is_open_positions, get_account, place_market_order
 from func_bot_agent import BotAgent
 import pandas as pd
 import json
@@ -19,7 +19,7 @@ async def open_positions(client):
     # Load cointegrated pairs
     df = pd.read_csv("cointegrated_pairs.csv")
 
-    # Get markets from referencing min order size, tick size, etc.
+    # Get markets for reference (min order size, tick size, etc.)
     markets = await get_markets(client)
 
     bot_agents = []
@@ -92,6 +92,22 @@ async def open_positions(client):
                         print("Insufficient collateral to place the trade.")
                         break
 
+                    # Place the base order
+                    base_order_result = await place_market_order(client, base_market, base_side, base_size, accept_base_price, False)
+                    if base_order_result["status"] == "failed":
+                        print(f"Error placing base order: {base_order_result['error']}")
+                        continue
+                    else:
+                        print(f"First order placed successfully for {base_market}: {base_order_result['order_id']}")
+
+                    # Place the quote order
+                    quote_order_result = await place_market_order(client, quote_market, quote_side, quote_size, accept_quote_price, False)
+                    if quote_order_result["status"] == "failed":
+                        print(f"Error placing quote order: {quote_order_result['error']}")
+                        continue
+                    else:
+                        print(f"Second order placed successfully for {quote_market}: {quote_order_result['order_id']}")
+
                     # Create Bot Agent with accept_failsafe_base_price
                     bot_agent = BotAgent(
                         client,
@@ -103,7 +119,7 @@ async def open_positions(client):
                         quote_side=quote_side,
                         quote_size=quote_size,
                         quote_price=accept_quote_price,
-                        accept_failsafe_base_price=accept_failsafe_base_price,  # Add this line
+                        accept_failsafe_base_price=accept_failsafe_base_price,
                         z_score=z_score,
                         half_life=half_life,
                         hedge_ratio=hedge_ratio
