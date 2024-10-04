@@ -4,12 +4,12 @@ import sys  # For printing spinner output
 import time
 from constants import ABORT_ALL_POSITIONS, FIND_COINTEGRATED, PLACE_TRADES, MANAGE_EXITS
 from func_connections import connect_dydx
-from func_private import abort_all_positions, place_market_order, get_open_positions
+from func_private import abort_all_positions, get_open_positions
 from func_public import construct_market_prices
 from func_cointegration import store_cointegration_results
 from func_exit_pairs import manage_trade_exits
 from func_messaging import send_message
-from func_entry_pairs import open_positions  # This import should not cause a circular import
+from func_entry_pairs import open_positions  # Import only what is needed
 
 # Spinner function to indicate the bot is working
 async def spinner_task():
