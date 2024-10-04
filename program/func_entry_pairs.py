@@ -1,110 +1,117 @@
-import asyncio
-import time
-import itertools
-import sys
-from constants import ABORT_ALL_POSITIONS, FIND_COINTEGRATED, PLACE_TRADES, MANAGE_EXITS
-from func_connections import connect_dydx
-from func_private import abort_all_positions, place_market_order, get_open_positions
-from func_public import construct_market_prices
-from func_cointegration import store_cointegration_results
-from func_entry_pairs import start_bot  # Call your bot logic here
-from func_exit_pairs import manage_trade_exits
-from func_messaging import send_message
+from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
+from func_utils import format_number
+from func_cointegration import calculate_zscore
+from func_public import get_candles_recent, get_markets
+from func_private import is_open_positions, get_account
+from func_bot_agent import BotAgent
+import pandas as pd
+import json
 
-# Spinner function to indicate the bot is working
-async def spinner_task():
-    spinner = itertools.cycle(['%', '%%', '%%%'])
-    while True:
-        sys.stdout.write(next(spinner))  # Print spinning character
-        sys.stdout.flush()  # Ensure it prints immediately
-        sys.stdout.write('\b\b\b')  # Erase the spinner characters
-        await asyncio.sleep(0.1)  # Control the speed of the spinner
+IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]
 
-# MAIN FUNCTION
-async def main():
+# Function to open positions based on cointegration signals
+async def open_positions(client):
+    """
+    Manage finding triggers for trade entry.
+    Store trades for managing later on for the exit function.
+    """
 
-    # Send a message on bot launch
-    send_message("Bot launch successful")
+    # Load cointegrated pairs
+    df = pd.read_csv("cointegrated_pairs.csv")
 
-    # Connect to client
+    # Get markets from referencing min order size, tick size, etc.
+    markets = await get_markets(client)
+
+    bot_agents = []
+
+    # Load existing bot agents from JSON
     try:
-        print("\nProgram started...")
-        print("Connecting to Client...")
-        client = await connect_dydx()  # Connect to the client
-    except Exception as e:
-        print("Error connecting to client: ", e)
-        send_message(f"Failed to connect to client {e}")
-        exit(1)
+        with open("bot_agents.json", "r") as open_positions_file:
+            open_positions_dict = json.load(open_positions_file)
+            for p in open_positions_dict:
+                bot_agents.append(p)
+    except FileNotFoundError:
+        bot_agents = []
 
-    # Abort all open positions if the flag is set
-    if ABORT_ALL_POSITIONS:
-        try:
-            print("\nClosing open positions...")
-            await abort_all_positions(client)
-            print("Finished closing open positions.")
-        except Exception as e:
-            print("Error closing all positions: ", e)
-            send_message(f"Error closing all positions {e}")
-            exit(1)
+    # Loop through pairs to find opportunities
+    for index, row in df.iterrows():
+        base_market = row["base_market"]
+        quote_market = row["quote_market"]
+        hedge_ratio = row["hedge_ratio"]
+        half_life = row["half_life"]
 
-    # Find Cointegrated Pairs if the flag is set
-    if FIND_COINTEGRATED:
-        try:
-            print("\nFetching token market prices, please allow around 5 minutes...")
-            df_market_prices = await construct_market_prices(client)
-            print(df_market_prices)
-        except Exception as e:
-            print("Error constructing market prices: ", e)
-            send_message(f"Error constructing market prices {e}")
-            exit(1)
+        if base_market in IGNORE_ASSETS or quote_market in IGNORE_ASSETS:
+            continue
 
         try:
-            print("\nStoring cointegrated pairs...")
-            stores_result = store_cointegration_results(df_market_prices)
-            if stores_result != "saved":
-                print("Error saving cointegrated pairs")
-                exit(1)
+            series_1 = await get_candles_recent(client, base_market)
+            series_2 = await get_candles_recent(client, quote_market)
         except Exception as e:
-            print("Error saving cointegrated pairs: ", e)
-            send_message(f"Error saving cointegrated pairs {e}")
-            exit(1)
+            print(f"Error fetching prices: {e}")
+            continue
 
-    # Run bot operations in an always-on loop
-    while True:
+        if len(series_1) > 0 and len(series_1) == len(series_2):
+            spread = series_1 - (hedge_ratio * series_2)
+            z_score = calculate_zscore(spread).values.tolist()[-1]
 
-        # Start spinner task to show it's actively looking for trades
-        spinner = asyncio.create_task(spinner_task())  # Start the spinner
+            if abs(z_score) >= ZSCORE_THRESH:
+                is_base_open = await is_open_positions(client, base_market)
+                is_quote_open = await is_open_positions(client, quote_market)
 
-        # Manage existing positions
-        if MANAGE_EXITS:
-            try:
-                print("\nManaging exits...")
-                await manage_trade_exits(client)  # Manage trade exits
-                print("Finished managing exits.")
-                await asyncio.sleep(1)  # Allow time between checks
-            except Exception as e:
-                print("Error managing exiting positions: ", e)
-                send_message(f"Error managing exiting positions {e}")
-                exit(1)
+                if not is_base_open and not is_quote_open:
+                    base_side = "BUY" if z_score < 0 else "SELL"
+                    quote_side = "BUY" if z_score > 0 else "SELL"
 
-        # Place trades for opening positions
-        if PLACE_TRADES:
-            try:
-                print("\nFinding trading opportunities...")
-                await start_bot(client)  # Your bot's main logic
-                await asyncio.sleep(1)  # Allow time between checks
-            except Exception as e:
-                print("Error trading pairs: ", e)
-                send_message(f"Error opening trades {e}")
-                exit(1)
+                    base_price = series_1[-1]
+                    quote_price = series_2[-1]
+                    accept_base_price = float(base_price) * 1.01 if z_score < 0 else float(base_price) * 0.99
+                    accept_quote_price = float(quote_price) * 1.01 if z_score > 0 else float(quote_price) * 0.99
 
-        # Cancel the spinner when any activity happens (trades or exits)
-        spinner.cancel()
-        print("\n")  # Add some spacing after spinner
+                    base_tick_size = markets["markets"][base_market]["tickSize"]
+                    quote_tick_size = markets["markets"][quote_market]["tickSize"]
 
-        # Pause briefly before starting the next iteration
-        await asyncio.sleep(1)
+                    accept_base_price = format_number(accept_base_price, base_tick_size)
+                    accept_quote_price = format_number(accept_quote_price, quote_tick_size)
 
+                    base_quantity = 1 / base_price * USD_PER_TRADE
+                    quote_quantity = 1 / quote_price * USD_PER_TRADE
 
-# Run the main function with asyncio
-asyncio.run(main())
+                    base_step_size = markets["markets"][base_market]["stepSize"]
+                    quote_step_size = markets["markets"][quote_market]["stepSize"]
+
+                    base_size = format_number(base_quantity, base_step_size)
+                    quote_size = format_number(quote_quantity, quote_step_size)
+
+                    account = await get_account(client)
+                    free_collateral = float(account["freeCollateral"])
+
+                    if free_collateral < USD_MIN_COLLATERAL:
+                        print("Insufficient collateral to place the trade.")
+                        break
+
+                    # Create Bot Agent
+                    bot_agent = BotAgent(
+                        client,
+                        market_1=base_market,
+                        market_2=quote_market,
+                        base_side=base_side,
+                        base_size=base_size,
+                        base_price=accept_base_price,
+                        quote_side=quote_side,
+                        quote_size=quote_size,
+                        quote_price=accept_quote_price,
+                        z_score=z_score,
+                        half_life=half_life,
+                        hedge_ratio=hedge_ratio
+                    )
+
+                    bot_open_dict = await bot_agent.open_trades()
+
+                    if bot_open_dict == "failed":
+                        continue
+
+                    if bot_open_dict["pair_status"] == "LIVE":
+                        bot_agents.append(bot_open_dict)
+                        with open("bot_agents.json", "w") as f:
+                            json.dump(bot_agents, f)
+                        print("Trade opened successfully.")
