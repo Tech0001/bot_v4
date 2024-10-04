@@ -127,13 +127,14 @@ async def get_markets(client):
 async def get_candles_recent(client, market):
     """ Function to fetch recent candle data for a specific market. """
     try:
-        # Correct method call to get candles from the public API.
-        candles = await client.public.get_market_candles(
+        # Use the correct method to get candles from the indexer
+        response = await client.indexer.markets.get_perpetual_market_candles(
             market=market,
             resolution="1HOUR",
             limit=100
         )
-        return candles["candles"]
+        candles = response["candles"]
+        return candles
     except Exception as e:
         print(f"Error fetching candles for {market}: {e}")
         return []
