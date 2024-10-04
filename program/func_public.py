@@ -3,11 +3,87 @@ from dydx_v4_client.node.market import Market
 from dydx_v4_client.indexer.rest.constants import OrderType
 from v4_proto.dydxprotocol.clob.order_pb2 import Order
 from constants import DYDX_ADDRESS
-from func_utils import format_number  # Import only the functions required
-from func_private import cancel_order, get_open_positions, place_market_order  # Importing from func_private
+from func_utils import format_number  # Import only required functions
 import random
 import time
 import json
+
+# Get Markets (directly using get_markets from func_private)
+from func_private import get_markets
+
+# Cancel Order
+async def cancel_order(client, order_id):
+    order = await get_order(client, order_id)
+    ticker = order["ticker"]
+    markets_data = await get_markets(client)
+    market = Market(markets_data["markets"][ticker])
+    market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
+    current_block = await client.node.latest_block_height()
+    good_til_block = current_block + 1 + 10
+    await client.node.cancel_order(
+        client.wallet,
+        market_order_id,
+        good_til_block=good_til_block
+    )
+    print(f"Attempted to cancel order for: {order['ticker']}. Please check the dashboard to ensure canceled.")
+
+# Get Order
+async def get_order(client, order_id):
+    return await client.indexer_account.orders.get_order_by_id(order_id)
+
+# Get Open Positions
+async def get_open_positions(client):
+    response = await client.indexer_account.positions.get_positions_by_account(DYDX_ADDRESS)
+    return response["positions"]
+
+# Check if Positions are Open
+async def is_open_positions(client, market):
+    time.sleep(0.2)
+    open_positions = await get_open_positions(client)
+    return any(pos['market'] == market for pos in open_positions)
+
+# Place Market Order
+async def place_market_order(client, market, side, size, price, reduce_only):
+    try:
+        # Explicitly convert size and price to floats
+        size = float(size)
+        price = float(price)
+
+        current_block = await client.node.latest_block_height()
+        markets_data = await get_markets(client)
+        market_obj = Market(markets_data["markets"][market])
+        market_order_id = market_obj.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
+        good_til_block = current_block + 1 + 10
+
+        # Place Market Order
+        new_order = market_obj.order(
+            order_id=market_order_id,
+            order_type=OrderType.MARKET,
+            side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
+            size=size,
+            price=price,
+            time_in_force=Order.TimeInForce.TIME_IN_FORCE_UNSPECIFIED,
+            reduce_only=reduce_only,
+            good_til_block=good_til_block
+        )
+
+        order_response = await client.node.place_order(
+            wallet=client.wallet,
+            order=new_order,
+        )
+        return order_response
+
+    except Exception as e:
+        print(f"Error placing market order: {e}")
+        return None
+
+# Cancel all open orders
+async def cancel_all_orders(client):
+    orders = await client.indexer_account.orders.get_orders_by_account(DYDX_ADDRESS)
+    if len(orders) > 0:
+        for order in orders:
+            await cancel_order(client, order["id"])
+            print(f"Order {order['id']} canceled.")
 
 # Abort all open positions
 async def abort_all_positions(client):
@@ -40,16 +116,6 @@ async def abort_all_positions(client):
         with open("bot_agents.json", "w") as f:
             json.dump([], f)
 
-# Get Markets
-async def get_markets(client):
-    """ Function to get all available markets from the indexer. """
-    try:
-        markets = await client.indexer.markets.get_perpetual_markets()
-        return markets
-    except Exception as e:
-        print(f"Error fetching markets: {e}")
-        return {}
-
 # Get Recent Candles
 async def get_candles_recent(client, market):
     """ Function to fetch recent candle data for a specific market. """
@@ -66,10 +132,9 @@ async def get_candles_recent(client, market):
         print(f"Error fetching candles for {market}: {e}")
         return []
 
-# Cancel all open orders (using cancel_order from func_private)
-async def cancel_all_orders(client):
-    orders = await client.indexer_account.orders.get_orders_by_account(DYDX_ADDRESS)
-    if len(orders) > 0:
-        for order in orders:
-            await cancel_order(client, order["id"])
-            print(f"Order {order['id']} canceled.")
+# Check Order Status
+async def check_order_status(client, order_id):
+    order = await get_order(client, order_id)
+    if "status" in order:
+        return order["status"]
+    return "UNKNOWN"
