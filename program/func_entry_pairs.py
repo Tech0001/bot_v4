@@ -6,6 +6,8 @@ from func_private import is_open_positions, get_account
 from func_bot_agent import BotAgent
 import pandas as pd
 import json
+import time
+import asyncio
 
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
 
@@ -61,15 +63,18 @@ async def open_positions(client):
             spread = series_1 - (hedge_ratio * series_2)
             z_score = calculate_zscore(spread).values.tolist()[-1]
 
-            # Establish if potential trade
+            # Log whether the ZScore exceeds the threshold
+            print(f"ZScore for {base_market}/{quote_market}: {z_score}")
             if abs(z_score) >= ZSCORE_THRESH:
+                print(f"ZScore of {z_score} exceeds threshold of {ZSCORE_THRESH}. Considering trade.")
 
                 # Ensure like-for-like not already open (diversify trading)
                 is_base_open = await is_open_positions(client, base_market)
                 is_quote_open = await is_open_positions(client, quote_market)
 
-                # Place trade
+                # If no open positions, proceed to trade
                 if not is_base_open and not is_quote_open:
+                    print(f"No open positions for {base_market}/{quote_market}. Placing trade.")
 
                     # Determine side
                     base_side = "BUY" if z_score < 0 else "SELL"
@@ -109,13 +114,16 @@ async def open_positions(client):
 
                     # If checks pass, place trades
                     if check_base and check_quote:
+                        print(f"Order size checks passed for {base_market}/{quote_market}.")
 
                         # Check account balance
                         account = await get_account(client)
                         free_collateral = float(account["freeCollateral"])
+                        print(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
 
                         # Guard: Ensure collateral
                         if free_collateral < USD_MIN_COLLATERAL:
+                            print("Insufficient collateral. Skipping trade.")
                             break
 
                         # Create Bot Agent
@@ -140,10 +148,12 @@ async def open_positions(client):
 
                         # Guard: Handle failure
                         if bot_open_dict == "failed":
+                            print("Failed to open trades.")
                             continue
 
                         # Handle success in opening trades
                         if bot_open_dict["pair_status"] == "LIVE":
+                            print("Trade status: Live")
 
                             # Append to list of bot agents
                             bot_agents.append(bot_open_dict)
@@ -152,6 +162,9 @@ async def open_positions(client):
                             # Save trade
                             with open("bot_agents.json", "w") as f:
                                 json.dump(bot_agents, f)
+
+    # Add sleep delay to reduce looping
+    await asyncio.sleep(1)
 
     # Save agents
     # if len(bot_agents) > 0:
