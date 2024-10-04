@@ -7,92 +7,80 @@ from func_cointegration import store_cointegration_results
 from func_exit_pairs import manage_trade_exits
 from func_entry_pairs import open_positions
 from func_messaging import send_message
+from func_public import fetch_market_prices  # Corrected to match new version of func_public
 
-# Fetch market prices directly without using get_markets
-async def fetch_market_prices(client):
-    try:
-        response = await client.indexer.markets.get_perpetual_markets()
-        return response["markets"]
-    except Exception as e:
-        print(f"Error fetching market prices: {e}")
-        return None
-
+# MAIN FUNCTION
 async def main():
 
-    # Send message on bot launch
     send_message("Bot launch successful")
 
-    # Connect to client
     try:
-        print("\nProgram started...")
         print("Connecting to Client...")
         client = await connect_dydx()
+        print("Connected to client successfully")
     except Exception as e:
-        print("Error connecting to client: ", e)
-        send_message(f"Failed to connect to client {e}")
+        print(f"Error connecting to client: {str(e)}")
+        send_message(f"Failed to connect to client: {str(e)}")
         exit(1)
 
-    # Abort all open positions if flag is set
     if ABORT_ALL_POSITIONS:
         try:
-            print("\nClosing open positions...")
+            print("Closing open positions...")
             await abort_all_positions(client)
-            print("Finished closing open positions.")
+            print("All positions closed successfully")
         except Exception as e:
-            print("Error closing all positions: ", e)
-            send_message(f"Error closing all positions {e}")
+            print(f"Error closing all positions: {str(e)}")
+            send_message(f"Error closing all positions: {str(e)}")
             exit(1)
 
-    # Find Cointegrated Pairs if flag is set
     if FIND_COINTEGRATED:
         try:
-            print("\nFetching token market prices...")
-            df_market_prices = await fetch_market_prices(client)
-            if df_market_prices is None:
-                raise ValueError("Market prices could not be fetched.")
-            print(df_market_prices)
+            print("Fetching token market prices...")
+            df_market_prices = await fetch_market_prices(client)  # Use updated function
+            if df_market_prices is None or len(df_market_prices) == 0:
+                print("Error: Market prices could not be fetched or the data is empty.")
+                send_message("Error: Market prices could not be fetched or the data is empty.")
+                exit(1)
+            print("Market prices fetched successfully")
+            print(df_market_prices)  # Check the content of the data (dictionary most likely)
         except Exception as e:
-            print("Error constructing market prices: ", e)
-            send_message(f"Error constructing market prices {e}")
+            print(f"Error fetching market prices: {str(e)}")
+            send_message(f"Error fetching market prices: {str(e)}")
             exit(1)
 
         try:
-            print("\nStoring cointegrated pairs...")
+            print("Storing cointegrated pairs...")
             stores_result = store_cointegration_results(df_market_prices)
             if stores_result != "saved":
-                print("Error saving cointegrated pairs")
+                print(f"Error saving cointegrated pairs: {stores_result}")
+                send_message(f"Error saving cointegrated pairs: {stores_result}")
                 exit(1)
+            print("Cointegrated pairs stored successfully")
         except Exception as e:
-            print("Error saving cointegrated pairs: ", e)
-            send_message(f"Error saving cointegrated pairs {e}")
+            print(f"Error saving cointegrated pairs: {str(e)}")
+            send_message(f"Error saving cointegrated pairs: {str(e)}")
             exit(1)
 
-    # Run bot operations in an always-on loop
     while True:
-        # Manage existing positions
         if MANAGE_EXITS:
             try:
-                print("\nManaging exits...")
+                print("Managing exits...")
                 await manage_trade_exits(client)
-                print("Finished managing exits.")
-                await asyncio.sleep(1)
+                print("Exit management complete")
+                time.sleep(1)
             except Exception as e:
-                print("Error managing exits: ", e)
-                send_message(f"Error managing exits {e}")
+                print(f"Error managing exiting positions: {str(e)}")
+                send_message(f"Error managing exiting positions: {str(e)}")
                 exit(1)
 
-        # Place trades for opening positions
         if PLACE_TRADES:
             try:
-                print("\nFinding trading opportunities...")
+                print("Finding trading opportunities...")
                 await open_positions(client)
-                await asyncio.sleep(1)
+                print("Trades placed successfully")
             except Exception as e:
-                print("Error trading pairs: ", e)
-                send_message(f"Error opening trades {e}")
+                print(f"Error trading pairs: {str(e)}")
+                send_message(f"Error opening trades: {str(e)}")
                 exit(1)
-
-        # Pause before next iteration
-        await asyncio.sleep(1)
 
 asyncio.run(main())

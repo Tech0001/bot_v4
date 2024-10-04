@@ -11,6 +11,25 @@ import pandas as pd
 
 ISO_TIMES = get_ISO_times()
 
+# Fetch market prices directly for cointegration calculation
+async def fetch_market_prices(client):
+    try:
+        response = await client.indexer.markets.get_perpetual_markets()
+        markets_data = response["markets"]
+
+        # Extract close prices from market data for each asset
+        prices_dict = {}
+        for market in markets_data:
+            prices_dict[market] = await get_candles_recent(client, market)
+
+        # Convert the prices dictionary into a DataFrame for easy manipulation
+        df_market_prices = pd.DataFrame(prices_dict)
+        return df_market_prices
+
+    except Exception as e:
+        print(f"Error fetching market prices: {e}")
+        return None
+
 # Cancel Order
 async def cancel_order(client, order_id):
     order = await get_order(client, order_id)
