@@ -3,11 +3,19 @@ import time
 from constants import ABORT_ALL_POSITIONS, FIND_COINTEGRATED, PLACE_TRADES, MANAGE_EXITS
 from func_connections import connect_dydx
 from func_private import abort_all_positions
-from func_public import get_markets
 from func_cointegration import store_cointegration_results
 from func_exit_pairs import manage_trade_exits
 from func_entry_pairs import open_positions
 from func_messaging import send_message
+
+# Fetch market prices directly without using get_markets
+async def fetch_market_prices(client):
+    try:
+        response = await client.indexer.markets.get_perpetual_markets()
+        return response["markets"]
+    except Exception as e:
+        print(f"Error fetching market prices: {e}")
+        return None
 
 async def main():
 
@@ -39,7 +47,9 @@ async def main():
     if FIND_COINTEGRATED:
         try:
             print("\nFetching token market prices...")
-            df_market_prices = await get_markets(client)
+            df_market_prices = await fetch_market_prices(client)
+            if df_market_prices is None:
+                raise ValueError("Market prices could not be fetched.")
             print(df_market_prices)
         except Exception as e:
             print("Error constructing market prices: ", e)

@@ -1,13 +1,22 @@
 from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
-from func_public import get_candles_recent, get_markets
+from func_public import get_candles_recent
 from func_private import is_open_positions, get_account, place_market_order
 from func_bot_agent import BotAgent
 import pandas as pd
 import json
 
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]
+
+# Fetch market data directly
+async def fetch_market_data(client, market):
+    try:
+        response = await client.indexer.markets.get_perpetual_markets()
+        return response["markets"][market]
+    except Exception as e:
+        print(f"Error fetching market data for {market}: {e}")
+        return None
 
 # Function to open positions based on cointegration signals
 async def open_positions(client):
@@ -18,9 +27,6 @@ async def open_positions(client):
 
     # Load cointegrated pairs
     df = pd.read_csv("cointegrated_pairs.csv")
-
-    # Get markets for reference (min order size, tick size, etc.)
-    markets = await get_markets(client)
 
     bot_agents = []
 
@@ -69,8 +75,16 @@ async def open_positions(client):
 
                     failsafe_base_price = float(base_price) * 0.05 if z_score < 0 else float(base_price) * 1.7
 
-                    base_tick_size = markets["markets"][base_market]["tickSize"]
-                    quote_tick_size = markets["markets"][quote_market]["tickSize"]
+                    # Fetch market data for both base and quote markets
+                    market_base_data = await fetch_market_data(client, base_market)
+                    market_quote_data = await fetch_market_data(client, quote_market)
+
+                    if market_base_data is None or market_quote_data is None:
+                        print(f"Error fetching market data for {base_market} or {quote_market}")
+                        continue
+
+                    base_tick_size = market_base_data["tickSize"]
+                    quote_tick_size = market_quote_data["tickSize"]
 
                     accept_base_price = format_number(accept_base_price, base_tick_size)
                     accept_quote_price = format_number(accept_quote_price, quote_tick_size)
@@ -79,8 +93,8 @@ async def open_positions(client):
                     base_quantity = 1 / base_price * USD_PER_TRADE
                     quote_quantity = 1 / quote_price * USD_PER_TRADE
 
-                    base_step_size = markets["markets"][base_market]["stepSize"]
-                    quote_step_size = markets["markets"][quote_market]["stepSize"]
+                    base_step_size = market_base_data["stepSize"]
+                    quote_step_size = market_quote_data["stepSize"]
 
                     base_size = format_number(base_quantity, base_step_size)
                     quote_size = format_number(quote_quantity, quote_step_size)
