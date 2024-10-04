@@ -19,15 +19,12 @@ from pprint import pprint
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]  # Ignore these assets which are not trading on testnet
 
 
-async def place_market_order_v4(node_client, wallet, market_id, side, size):
+async def place_market_order_v4(node, wallet, market_id, side, size):
     """
     Function to place a market order using the v4 structure.
     """
-    # Corrected NodeClient initialization from the example
-    node = node_client  # NodeClient.connect(node_client) is not needed here based on examples
-
-    # Initialize IndexerClient from client (client should be a correct instance)
-    indexer = IndexerClient(node.rest_indexer)
+    # Initialize IndexerClient using node
+    indexer = IndexerClient(node)
 
     # Fetch market data
     market_data = await indexer.markets.get_perpetual_markets(market_id)
@@ -97,7 +94,7 @@ async def open_positions(node_client):
         bot_agents = []
 
     # Initialize the IndexerClient using the node_client's rest_indexer
-    indexer = IndexerClient(node_client.rest_indexer)
+    indexer = IndexerClient(node_client)
 
     # Loop through each row in the dataframe for trading opportunities
     for index, row in df.iterrows():
