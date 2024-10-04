@@ -4,13 +4,14 @@ from dydx_v4_client.indexer.rest.constants import OrderType
 from v4_proto.dydxprotocol.clob.order_pb2 import Order
 from constants import DYDX_ADDRESS
 from func_utils import format_number
+from func_private import get_order  # Importing get_order from func_private
 import random
 import time
 import json
 
 # Cancel Order
 async def cancel_order(client, order_id):
-    order = await get_order(client, order_id)
+    order = await get_order(client, order_id)  # Ensure get_order is used properly
     ticker = order["ticker"]
     market = Market((await client.indexer.markets.get_perpetual_markets())["markets"][ticker])
     market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
@@ -22,10 +23,6 @@ async def cancel_order(client, order_id):
         good_til_block=good_til_block
     )
     print(f"Attempted to cancel order for: {order['ticker']}. Please check the dashboard to ensure canceled.")
-
-# Get Order
-async def get_order(client, order_id):
-    return await client.indexer_account.orders.get_order_by_id(order_id)
 
 # Get Account
 async def get_account(client):

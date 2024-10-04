@@ -1,6 +1,7 @@
-from dydx_v4_client import MAX_CLIENT_ID, Order, OrderFlags
+from dydx_v4_client import MAX_CLIENT_ID, OrderFlags
 from dydx_v4_client.node.market import Market
 from dydx_v4_client.indexer.rest.constants import OrderType
+from v4_proto.dydxprotocol.clob.order_pb2 import Order  # Importing Order correctly
 from constants import DYDX_ADDRESS
 from func_utils import format_number
 from func_public import get_markets
@@ -14,7 +15,7 @@ BACKOFF_DELAY = 2  # Backoff delay between retries
 
 # Cancel Order
 async def cancel_order(client, order_id):
-    order = await get_order(client, order_id)
+    order = await get_order(client, order_id)  # Ensure get_order is used properly
     ticker = order["ticker"]
     market = Market((await client.indexer.markets.get_perpetual_markets(ticker))["markets"][ticker])
     market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
@@ -68,7 +69,7 @@ async def place_market_order(client, ticker, side, size, price, reduce_only):
                     side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
                     size=float(size),
                     price=float(price),
-                    time_in_force=Order.TIME_IN_FORCE_UNSPECIFIED,
+                    time_in_force=Order.TimeInForce.TIME_IN_FORCE_UNSPECIFIED,
                     reduce_only=reduce_only,
                     good_til_block=good_til_block
                 ),
