@@ -103,3 +103,11 @@ async def abort_all_positions(client):
         # Clear saved agents after aborting all positions
         with open("bot_agents.json", "w") as f:
             json.dump([], f)
+
+# Check Order Status
+async def check_order_status(client, order_id):
+    """Function to check the status of an order."""
+    order = await get_order(client, order_id)
+    if "status" in order:
+        return order["status"]
+    return "UNKNOWN"
