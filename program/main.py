@@ -21,7 +21,7 @@ async def main():
     except Exception as e:
         print(f"Error connecting to client: {str(e)}")
         send_message(f"Failed to connect to client: {str(e)}")
-        exit(1)
+        return  # Instead of exit, safely end the function
 
     if ABORT_ALL_POSITIONS:
         try:
@@ -31,7 +31,7 @@ async def main():
         except Exception as e:
             print(f"Error closing all positions: {str(e)}")
             send_message(f"Error closing all positions: {str(e)}")
-            exit(1)
+            return  # Exit gracefully
 
     if FIND_COINTEGRATED:
         try:
@@ -40,13 +40,13 @@ async def main():
             if df_market_prices is None or len(df_market_prices) == 0:
                 print("Error: Market prices could not be fetched or the data is empty.")
                 send_message("Error: Market prices could not be fetched or the data is empty.")
-                exit(1)
+                return  # Exit safely
             print("Market prices fetched successfully")
             print(df_market_prices)  # Check the content of the data (dictionary most likely)
         except Exception as e:
             print(f"Error fetching market prices: {str(e)}")
             send_message(f"Error fetching market prices: {str(e)}")
-            exit(1)
+            return  # Exit safely
 
         try:
             print("Storing cointegrated pairs...")
@@ -54,24 +54,25 @@ async def main():
             if stores_result != "saved":
                 print(f"Error saving cointegrated pairs: {stores_result}")
                 send_message(f"Error saving cointegrated pairs: {stores_result}")
-                exit(1)
+                return  # Exit safely
             print("Cointegrated pairs stored successfully")
         except Exception as e:
             print(f"Error saving cointegrated pairs: {str(e)}")
             send_message(f"Error saving cointegrated pairs: {str(e)}")
-            exit(1)
+            return  # Exit safely
 
+    # Main loop to manage exits and trades
     while True:
         if MANAGE_EXITS:
             try:
                 print("Managing exits...")
                 await manage_trade_exits(client)
                 print("Exit management complete")
-                time.sleep(1)
+                time.sleep(1)  # Ensure API rate-limiting is handled
             except Exception as e:
                 print(f"Error managing exiting positions: {str(e)}")
                 send_message(f"Error managing exiting positions: {str(e)}")
-                exit(1)
+                return  # Exit safely, or consider retrying
 
         if PLACE_TRADES:
             try:
@@ -81,6 +82,6 @@ async def main():
             except Exception as e:
                 print(f"Error trading pairs: {str(e)}")
                 send_message(f"Error opening trades: {str(e)}")
-                exit(1)
+                return  # Exit safely, or consider retrying
 
 asyncio.run(main())

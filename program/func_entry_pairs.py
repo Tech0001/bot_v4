@@ -2,12 +2,17 @@ from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
 from func_public import get_candles_recent
-from func_private import is_open_positions, get_account, place_market_order
+from func_private import get_open_positions, get_account, place_market_order
 from func_bot_agent import BotAgent
 import pandas as pd
 import json
 
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]
+
+# Helper function to check if a market has an open position
+async def is_market_open(client, market):
+    open_positions = await get_open_positions(client)
+    return market in open_positions.keys()
 
 # Fetch market data directly
 async def fetch_market_data(client, market):
@@ -61,8 +66,8 @@ async def open_positions(client):
             z_score = calculate_zscore(spread).values.tolist()[-1]
 
             if abs(z_score) >= ZSCORE_THRESH:
-                is_base_open = await is_open_positions(client, base_market)
-                is_quote_open = await is_open_positions(client, quote_market)
+                is_base_open = await is_market_open(client, base_market)
+                is_quote_open = await is_market_open(client, quote_market)
 
                 if not is_base_open and not is_quote_open:
                     base_side = "BUY" if z_score < 0 else "SELL"

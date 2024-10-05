@@ -7,35 +7,26 @@ from func_public import get_markets
 import random
 import time
 import json
-from pprint import pprint
-
-# Retry count constant
-MAX_RETRY_ATTEMPTS = 3
-BACKOFF_DELAY = 2  # Backoff delay between retries
 
 # Cancel Order
 async def cancel_order(client, order_id):
     try:
         order = await get_order(client, order_id)
-        ticker = order["ticker"]
-        market = Market((await client.indexer.markets.get_perpetual_markets(ticker))["markets"][ticker])
+        market = Market((await client.indexer.markets.get_perpetual_markets(order["ticker"]))["markets"][order["ticker"]])
         market_order_id = market.order_id(
-            DYDX_ADDRESS, 
-            0, 
-            random.randint(0, MAX_CLIENT_ID), 
+            DYDX_ADDRESS,
+            0,
+            random.randint(0, MAX_CLIENT_ID),
             OrderFlags.SHORT_TERM
         )
-        market_order_id.client_id = int(order["clientId"])
-        market_order_id.clob_pair_id = int(order["clobPairId"])
         current_block = await client.node.latest_block_height()
         good_til_block = current_block + 1 + 10
-
-        cancel = await client.node.cancel_order(
+        await client.node.cancel_order(
             client.wallet,
             market_order_id,
             good_til_block=good_til_block
         )
-        print(f"Attempted to cancel order for: {order['ticker']}. Please check the dashboard to ensure canceled.")
+        print(f"Attempted to cancel order for: {order['ticker']}. Please check the dashboard to ensure it was canceled.")
     except Exception as e:
         print(f"Error canceling order: {e}")
 
@@ -76,30 +67,32 @@ async def is_open_positions(client, market):
         print(f"Error checking open positions for {market}: {e}")
         return False
 
-# Place Market Order with Enhanced Validation
+# Place Market Order
 async def place_market_order(client, market, side, size, price, reduce_only):
     try:
         ticker = market
         current_block = await client.node.latest_block_height()
         market_data = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
         market_order_id = market_data.order_id(
-            DYDX_ADDRESS, 
-            0, 
-            random.randint(0, MAX_CLIENT_ID), 
+            DYDX_ADDRESS,
+            0,
+            random.randint(0, MAX_CLIENT_ID),
             OrderFlags.SHORT_TERM
         )
         good_til_block = current_block + 1 + 10
 
-        # Place Market Order with price setting
+        # Set Time In Force
+        time_in_force = Order.TIME_IN_FORCE_IOC  # Adjusted to Immediate or Cancel
+
+        # Place Market Order
         order = await client.node.place_order(
             client.wallet,
             market_data.order(
                 market_order_id,
-                order_type=OrderType.MARKET,  # Ensure the correct order type
                 side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
                 size=float(size),
-                price=float(price),  # Market order requires a price parameter
-                time_in_force=Order.TIME_IN_FORCE_UNSPECIFIED,
+                price=float(price),
+                time_in_force=time_in_force,
                 reduce_only=reduce_only,
                 good_til_block=good_til_block
             ),
@@ -108,9 +101,9 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         # Fetch recent orders to confirm placement
         time.sleep(1.5)
         orders = await client.indexer_account.account.get_subaccount_orders(
-            DYDX_ADDRESS, 
-            0, 
-            ticker, 
+            DYDX_ADDRESS,
+            0,
+            ticker,
             return_latest_orders="true",
         )
 
@@ -133,7 +126,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         print(f"Error placing order: {e}")
         return {"status": "failed", "error": str(e)}
 
-# Cancel all open orders
+# Cancel All Open Orders
 async def cancel_all_orders(client):
     try:
         orders = await client.indexer_account.account.get_subaccount_orders(DYDX_ADDRESS, 0, status="OPEN")
@@ -141,48 +134,59 @@ async def cancel_all_orders(client):
             for order in orders:
                 await cancel_order(client, order["id"])
                 print(f"Order {order['id']} canceled.")
+        else:
+            print("No open orders found.")
     except Exception as e:
         print(f"Error canceling open orders: {e}")
 
-# Abort all open positions
+# Abort All Open Positions
 async def abort_all_positions(client):
     try:
-        # Cancel all orders
+        # Cancel all open orders
         await cancel_all_orders(client)
 
-        # Get markets for reference of tick size
-        markets = await get_markets(client)
+        # Fetch all available markets
+        markets_response = await client.indexer.markets.get_perpetual_markets()
+        if not markets_response or "markets" not in markets_response:
+            raise ValueError("Markets data is missing or invalid.")
+        markets = markets_response["markets"]
 
-        # Get all open positions
+        # Fetch all open positions
         positions = await get_open_positions(client)
 
-        # Handle open positions
         if len(positions) > 0:
             for item in positions.keys():
                 pos = positions[item]
                 market = pos["market"]
                 side = "BUY" if pos["side"] == "SHORT" else "SELL"
                 price = float(pos["entryPrice"])
-                accept_price = price * 1.7 if side == "BUY" else price * 0.3  # For ensuring order fills
-                tick_size = markets["markets"][market]["tickSize"]
+
+                # Ensure market exists
+                if market not in markets:
+                    print(f"Market data for {market} not found.")
+                    continue
+
+                tick_size = markets[market]["tickSize"]
+                accept_price = price * 1.7 if side == "BUY" else price * 0.3  # Ensure order fills
                 accept_price = format_number(accept_price, tick_size)
 
+                # Place market order to close position
                 result = await place_market_order(client, market, side, pos["sumOpen"], accept_price, True)
 
                 if result["status"] == "failed":
                     print(f"Error closing position for {market}: {result['error']}")
-                    continue
                 else:
                     print(f"Closed position for {market}: {result['order_id']}")
 
             # Clear saved agents after aborting all positions
             with open("bot_agents.json", "w") as f:
                 json.dump([], f)
-
+        else:
+            print("No open positions found.")
     except Exception as e:
         print(f"Error aborting all positions: {e}")
 
-# Check Order Status with Enhanced Validation
+# Check Order Status
 async def check_order_status(client, order_id):
     try:
         if order_id:  # Ensure order_id is valid and not None
