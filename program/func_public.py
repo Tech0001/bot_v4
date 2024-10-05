@@ -46,44 +46,50 @@ async def get_candles_historical(client, market):
     return close_prices
 
 # Fetch market prices directly for cointegration calculation
-async def fetch_market_prices(client, limit_tokens=None):
+async def fetch_market_prices(client):
     try:
         # Fetch all markets data from the perpetual markets
         response = await client.indexer.markets.get_perpetual_markets()
         markets_data = response["markets"]
 
-        # Initialize a list of tradeable markets
-        tradeable_markets = [market for market in markets_data]
+        # Initialize a dictionary to store close prices for each market
+        prices_dict = {}
 
-        # Limit the number of tokens to fetch if specified
-        if limit_tokens:
-            tradeable_markets = tradeable_markets[:limit_tokens]
+        # Fetch recent candles for each active market
+        for market in markets_data:
+            print(f"Fetching recent prices for market: {market}")
+            prices = await get_candles_recent(client, market)
 
-        # Set initial DataFrame with first market
-        print(f"Fetching historical prices for {tradeable_markets[0]}...")
-        close_prices = await get_candles_historical(client, tradeable_markets[0])
-        df = pd.DataFrame(close_prices)
-        df.set_index("datetime", inplace=True)
+            # Ensure that the market has valid price data
+            if prices is not None and len(prices) > 0:
+                prices_dict[market] = prices
+            else:
+                print(f"Warning: No price data for market: {market}")
 
-        # Append other prices to DataFrame
-        for (i, market) in enumerate(tradeable_markets[1:], 1):
-            print(f"Extracting prices for {i + 1} of {len(tradeable_markets)} tokens for {market}")
-            close_prices_add = await get_candles_historical(client, market)
-            df_add = pd.DataFrame(close_prices_add)
-            try:
-                df_add.set_index("datetime", inplace=True)
-                df = pd.merge(df, df_add, how="outer", on="datetime", copy=False)
-            except Exception as e:
-                print(f"Failed to add {market} - {e}")
-            del df_add
+            # Adding rate-limiting between requests
+            time.sleep(0.2)
 
-        # Check any columns with NaNs and drop them
-        nans = df.columns[df.isna().any()].tolist()
-        if len(nans) > 0:
-            print("Dropping columns with NaNs: ", nans)
-            df.drop(columns=nans, inplace=True)
+        # Check if any markets have been added
+        if not prices_dict:
+            raise Exception("No market data fetched.")
 
-        return df
+        # Ensure all arrays are of the same length before constructing the DataFrame
+        lengths = [len(prices) for prices in prices_dict.values()]
+        min_length = min(lengths)
+        if min_length == 0:
+            raise Exception("One or more markets have no price data.")
+
+        # Truncate arrays to the same minimum length
+        for market in prices_dict.keys():
+            prices_dict[market] = prices_dict[market][-min_length:]
+
+        # Convert the prices dictionary into a DataFrame for easy manipulation
+        df_market_prices = pd.DataFrame(prices_dict)
+
+        # Drop any columns with NaN values (in case of mismatches)
+        df_market_prices.dropna(axis=1, inplace=True)
+
+        return df_market_prices
 
     except Exception as e:
         print(f"Error fetching market prices: {e}")
@@ -158,3 +164,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
     except Exception as e:
         print(f"Error placing market order: {e}")
         return None
+
+# Get Markets (Missing Function)
+async def get_markets(client):
+    return await client.indexer.markets.get_perpetual_markets()
