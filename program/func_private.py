@@ -50,56 +50,57 @@ async def is_open_positions(client, market):
         return True
     return False
 
-# Place Market Order with Retry Logic, Order Validation, and Backoff Strategy
+# Place Market Order with Enhanced Validation
 async def place_market_order(client, market, side, size, price, reduce_only):
-    for attempt in range(MAX_RETRY_ATTEMPTS):
-        try:
-            # Initialize market order
-            ticker = market
-            current_block = await client.node.latest_block_height()
-            market_data = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
-            market_order_id = market_data.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
-            good_til_block = current_block + 1 + 10
+    try:
+        ticker = market
+        current_block = await client.node.latest_block_height()
+        market_data = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
+        market_order_id = market_data.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
+        good_til_block = current_block + 1 + 10
 
-            # Place Market Order
-            order = await client.node.place_order(
-                client.wallet,
-                market_data.order(
-                    market_order_id,
-                    side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
-                    size=float(size),
-                    price=float(price),
-                    time_in_force=Order.TIME_IN_FORCE_UNSPECIFIED,
-                    reduce_only=reduce_only,
-                    good_til_block=good_til_block
-                ),
-            )
+        # Place Market Order
+        order = await client.node.place_order(
+            client.wallet,
+            market_data.order(
+                market_order_id,
+                side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
+                size=float(size),
+                price=float(price),  # Price is used in the market order, even though the type is market
+                time_in_force=Order.TIME_IN_FORCE_UNSPECIFIED,
+                reduce_only=reduce_only,
+                good_til_block=good_til_block
+            ),
+        )
 
-            # Validate and check order status by fetching recent orders
-            time.sleep(2.0)  # Wait for the order to reflect in the system
-            orders = await client.indexer_account.account.get_subaccount_orders(
-                DYDX_ADDRESS, 
-                0, 
-                ticker, 
-                return_latest_orders="true",
-            )
+        # Fetch recent orders to confirm order placement
+        time.sleep(2.0)
+        orders = await client.indexer_account.account.get_subaccount_orders(
+            DYDX_ADDRESS, 
+            0, 
+            ticker, 
+            return_latest_orders="true",
+        )
 
-            # Check if order was placed successfully
-            order_id = orders[0]["id"] if orders else None
-            if not order_id:
-                raise ValueError("Order placement failed: Unable to detect order in recent orders")
+        # Check for matching order_id
+        order_id = ""
+        for o in orders:
+            client_id = int(o["clientId"])
+            clob_pair_id = int(o["clobPairId"])
+            if client_id == market_order_id.client_id and clob_pair_id == market_order_id.clob_pair_id:
+                order_id = o["id"]
+                break
 
-            print(f"Order placed successfully: {order_id}")
-            return {"status": "success", "order_id": order_id}
+        # Handle missing order_id
+        if order_id == "":
+            raise ValueError("Order placement failed: Unable to detect order in recent orders")
 
-        except Exception as e:
-            print(f"Error placing order attempt {attempt + 1}/{MAX_RETRY_ATTEMPTS}: {e}")
-            if attempt == MAX_RETRY_ATTEMPTS - 1:
-                return {"status": "failed", "error": str(e)}
+        print(f"Order placed successfully: {order_id}")
+        return {"status": "success", "order_id": order_id}
 
-        # Wait before retrying
-        print(f"Retrying after {BACKOFF_DELAY} seconds...")
-        time.sleep(BACKOFF_DELAY)
+    except Exception as e:
+        print(f"Error placing order: {e}")
+        return {"status": "failed", "error": str(e)}
 
 # Cancel all open orders
 async def cancel_all_orders(client):
@@ -138,9 +139,17 @@ async def abort_all_positions(client):
         with open("bot_agents.json", "w") as f:
             json.dump([], f)
 
-# Check Order Status
+# Check Order Status with Enhanced Validation
 async def check_order_status(client, order_id):
-    order = await get_order(client, order_id)
-    if "status" in order:
-        return order["status"]
-    return "UNKNOWN"
+    try:
+        if order_id:  # Ensure order_id is valid and not None
+            order = await get_order(client, order_id)
+            if "status" in order:
+                return order["status"]
+            else:
+                raise ValueError(f"Order status not found for order ID: {order_id}")
+        else:
+            raise ValueError("Invalid order_id provided")
+    except Exception as e:
+        print(f"Error checking order status for {order_id}: {e}")
+        return "UNKNOWN"
