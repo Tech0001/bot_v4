@@ -34,20 +34,23 @@ def calculate_cointegration(series_1, series_2):
   series_2 = np.array(series_2).astype(np.float64)
   coint_flag = 0
   try:
+    # Perform cointegration test
     coint_res = coint(series_1, series_2)
-    coint_t = coint_res[0]
+    t_value = coint_res[0]
     p_value = coint_res[1]
-    critical_value = coint_res[2][1]
+    crit_value = coint_res[2][1]  # 5% significance level
 
-    # Better way to fit data vs older version
-    series_2_with_constant = sm.add_constant(series_2) 
+    # Fit OLS model for hedge ratio
+    series_2_with_constant = sm.add_constant(series_2)
     model = sm.OLS(series_1, series_2_with_constant).fit()
     hedge_ratio = model.params[1]
     intercept = model.params[0]
 
     spread = series_1 - (series_2 * hedge_ratio) - intercept
     half_life = half_life_mean_reversion(spread)
-    t_check = coint_t < critical_value
+
+    # Check if the t-value passes the test
+    t_check = t_value < crit_value
     coint_flag = 1 if p_value < 0.05 and t_check else 0
   except Exception as e:
     print(f"Error in cointegration calculation: {e}")
@@ -64,7 +67,6 @@ def store_cointegration_results(df_market_prices):
   criteria_met_pairs = []
 
   # Find cointegrated pairs
-  # Start with our base pair
   for index, base_market in enumerate(markets[:-1]):
     series_1 = df_market_prices[base_market].values.astype(np.float64).tolist()
 
@@ -72,17 +74,19 @@ def store_cointegration_results(df_market_prices):
     for quote_market in markets[index + 1:]:
       series_2 = df_market_prices[quote_market].values.astype(np.float64).tolist()
 
-      # Check cointegration
-      coint_flag, hedge_ratio, half_life = calculate_cointegration(series_1, series_2)
+      # Check if series have enough data
+      if len(series_1) > 1 and len(series_2) > 1:
+        # Check cointegration
+        coint_flag, hedge_ratio, half_life = calculate_cointegration(series_1, series_2)
 
-      # Log pair
-      if coint_flag == 1 and half_life is not None and half_life <= MAX_HALF_LIFE and half_life > 0:
-        criteria_met_pairs.append({
-          "base_market": base_market,
-          "quote_market": quote_market,
-          "hedge_ratio": hedge_ratio,
-          "half_life": half_life,
-        })
+        # Log pair if criteria are met
+        if coint_flag == 1 and half_life is not None and half_life <= MAX_HALF_LIFE and half_life > 0:
+          criteria_met_pairs.append({
+            "base_market": base_market,
+            "quote_market": quote_market,
+            "hedge_ratio": hedge_ratio,
+            "half_life": half_life,
+          })
 
   # Create and save DataFrame
   df_criteria_met = pd.DataFrame(criteria_met_pairs)
