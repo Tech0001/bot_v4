@@ -1,9 +1,7 @@
 from dydx_v4_client import MAX_CLIENT_ID, Order, OrderFlags
 from dydx_v4_client.node.market import Market
-from dydx_v4_client.indexer.rest.constants import OrderType
 from constants import DYDX_ADDRESS
 from func_utils import format_number
-from func_public import get_markets
 import random
 import time
 import json
@@ -12,6 +10,9 @@ import json
 async def cancel_order(client, order_id):
     try:
         order = await get_order(client, order_id)
+        if order is None:
+            raise ValueError(f"Order {order_id} not found.")
+        
         market = Market((await client.indexer.markets.get_perpetual_markets(order["ticker"]))["markets"][order["ticker"]])
         market_order_id = market.order_id(
             DYDX_ADDRESS,
@@ -82,7 +83,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         good_til_block = current_block + 1 + 10
 
         # Set Time In Force
-        time_in_force = Order.TIME_IN_FORCE_IOC  # Adjusted to Immediate or Cancel
+        time_in_force = Order.TIME_IN_FORCE_IOC  # Immediate or Cancel
 
         # Place Market Order
         order = await client.node.place_order(

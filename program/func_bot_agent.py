@@ -4,7 +4,6 @@ from func_messaging import send_message
 import asyncio
 import time
 
-
 class BotAgent:
     """
     Agent to manage the opening of trades and checking the status of orders.
@@ -63,9 +62,17 @@ class BotAgent:
         # Allow time to process
         await asyncio.sleep(2)  # Asynchronous wait
 
+        # Ensure the order_id is valid
+        if not order_id or order_id == "order_id":
+            print(f"Invalid order_id: {order_id}")
+            self.order_dict["pair_status"] = "ERROR"
+            return "error"
+
         # Check order status
         try:
             order_status = await check_order_status(self.client, order_id)
+            if not order_status:
+                raise ValueError(f"Failed to retrieve order status for order_id: {order_id}")
         except Exception as e:
             print(f"Error checking order status: {e}")
             self.order_dict["pair_status"] = "ERROR"
@@ -97,7 +104,7 @@ class BotAgent:
         # Place first order
         print(f"Placing first order for {self.market_1}")
         try:
-            base_order, order_id = await place_market_order(
+            base_order_result = await place_market_order(
                 self.client,
                 market=self.market_1,
                 side=self.base_side,
@@ -105,9 +112,16 @@ class BotAgent:
                 price=self.base_price,
                 reduce_only=False
             )
-            self.order_dict["order_id_m1"] = order_id
+            if not base_order_result or base_order_result.get('status') == 'failed':
+                raise ValueError(f"Error placing base order: {base_order_result.get('error', 'Unknown error')}")
+
+            order_id_m1 = base_order_result.get('order_id')
+            if not order_id_m1:
+                raise ValueError(f"Failed to retrieve order ID for {self.market_1}")
+
+            self.order_dict["order_id_m1"] = order_id_m1
             self.order_dict["order_time_m1"] = datetime.now().isoformat()
-            print("First order sent.")
+            print(f"First order placed successfully for {self.market_1}: {order_id_m1}")
         except Exception as e:
             print(f"Error placing first order: {e}")
             self.order_dict["pair_status"] = "ERROR"
@@ -126,7 +140,7 @@ class BotAgent:
         # Place second order
         print(f"Placing second order for {self.market_2}")
         try:
-            quote_order, order_id = await place_market_order(
+            quote_order_result = await place_market_order(
                 self.client,
                 market=self.market_2,
                 side=self.quote_side,
@@ -134,9 +148,16 @@ class BotAgent:
                 price=self.quote_price,
                 reduce_only=False
             )
-            self.order_dict["order_id_m2"] = order_id
+            if not quote_order_result or quote_order_result.get('status') == 'failed':
+                raise ValueError(f"Error placing quote order: {quote_order_result.get('error', 'Unknown error')}")
+
+            order_id_m2 = quote_order_result.get('order_id')
+            if not order_id_m2:
+                raise ValueError(f"Failed to retrieve order ID for {self.market_2}")
+
+            self.order_dict["order_id_m2"] = order_id_m2
             self.order_dict["order_time_m2"] = datetime.now().isoformat()
-            print("Second order sent.")
+            print(f"Second order placed successfully for {self.market_2}: {order_id_m2}")
         except Exception as e:
             print(f"Error placing second order: {e}")
             self.order_dict["pair_status"] = "ERROR"
@@ -153,7 +174,7 @@ class BotAgent:
 
             # Attempt to close first order
             try:
-                close_order, order_id = await place_market_order(
+                close_order_result = await place_market_order(
                     self.client,
                     market=self.market_1,
                     side=self.quote_side,  # Close with opposite side
@@ -162,8 +183,8 @@ class BotAgent:
                     reduce_only=True
                 )
                 await asyncio.sleep(2)
-                order_status_close_order = await check_order_status(self.client, order_id)
-                if order_status_close_order != "FILLED":
+                close_order_status = await check_order_status(self.client, close_order_result.get("order_id"))
+                if close_order_status != "FILLED":
                     print("Error: Failed to close the first order.")
                     send_message("Critical error: Failed to close first order.")
                     exit(1)
