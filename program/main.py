@@ -1,5 +1,7 @@
 import asyncio
 import time
+import threading
+import sys
 from constants import ABORT_ALL_POSITIONS, FIND_COINTEGRATED, PLACE_TRADES, MANAGE_EXITS
 from func_connections import connect_dydx
 from func_private import abort_all_positions
@@ -8,6 +10,25 @@ from func_exit_pairs import manage_trade_exits
 from func_entry_pairs import open_positions
 from func_messaging import send_message
 from func_public import fetch_market_prices  # Corrected to match new version of func_public
+
+# Spinner function
+def spinning_cursor():
+    while True:
+        for cursor in '|/-\\':
+            yield cursor
+
+def spinner_task():
+    spinner = spinning_cursor()
+    while True:
+        sys.stdout.write(next(spinner))
+        sys.stdout.flush()
+        sys.stdout.write('\b')
+        time.sleep(0.1)
+
+def start_spinner():
+    spinner_thread = threading.Thread(target=spinner_task)
+    spinner_thread.daemon = True
+    spinner_thread.start()
 
 # MAIN FUNCTION
 async def main():
@@ -60,6 +81,9 @@ async def main():
             print(f"Error saving cointegrated pairs: {str(e)}")
             send_message(f"Error saving cointegrated pairs: {str(e)}")
             return  # Exit safely
+
+    # Start the spinner
+    start_spinner()
 
     # Main loop to manage exits and trades
     while True:
