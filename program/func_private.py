@@ -1,6 +1,5 @@
 from dydx_v4_client import MAX_CLIENT_ID, Order, OrderFlags
 from dydx_v4_client.node.market import Market
-from dydx_v4_client.indexer.rest.constants import OrderType
 from constants import DYDX_ADDRESS
 from func_utils import format_number
 from func_public import get_markets
@@ -50,16 +49,21 @@ async def is_open_positions(client, market):
         return True
     return False
 
-# Place Market Order with Enhanced Validation
+# Place Market Order with Enhanced Validation (without order_type)
 async def place_market_order(client, market, side, size, price, reduce_only):
     try:
         ticker = market
         current_block = await client.node.latest_block_height()
         market_data = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
-        market_order_id = market_data.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
+        market_order_id = market_data.order_id(
+            DYDX_ADDRESS, 
+            0, 
+            random.randint(0, MAX_CLIENT_ID), 
+            OrderFlags.SHORT_TERM
+        )
         good_til_block = current_block + 1 + 10
 
-        # Place Market Order
+        # Place Market Order (remove order_type argument)
         order = await client.node.place_order(
             client.wallet,
             market_data.order(
