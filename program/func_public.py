@@ -95,41 +95,75 @@ async def fetch_market_prices(client):
         print(f"Error fetching market prices: {e}")
         return None
 
+# Get Markets (missing in previous versions)
+async def get_markets(client):
+    try:
+        # Fetch all perpetual markets
+        response = await client.indexer.markets.get_perpetual_markets()
+        return response["markets"]
+    except Exception as e:
+        print(f"Error fetching markets: {e}")
+        return None
+
 # Cancel Order
 async def cancel_order(client, order_id):
-    order = await get_order(client, order_id)
-    ticker = order["ticker"]
-    market = Market((await client.indexer.markets.get_perpetual_markets(ticker))["markets"][ticker])
-    market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
-    current_block = await client.node.latest_block_height()
-    good_til_block = current_block + 1 + 10
-    await client.node.cancel_order(
-        client.wallet,
-        market_order_id,
-        good_til_block=good_til_block
-    )
-    print(f"Attempted to cancel order for: {order['ticker']}. Please check the dashboard to ensure canceled.")
+    try:
+        order = await get_order(client, order_id)
+        ticker = order["ticker"]
+        market = Market((await client.indexer.markets.get_perpetual_markets(ticker))["markets"][ticker])
+        market_order_id = market.order_id(
+            DYDX_ADDRESS, 
+            0, 
+            random.randint(0, MAX_CLIENT_ID), 
+            OrderFlags.SHORT_TERM
+        )
+        current_block = await client.node.latest_block_height()
+        good_til_block = current_block + 1 + 10
+        await client.node.cancel_order(
+            client.wallet,
+            market_order_id,
+            good_til_block=good_til_block
+        )
+        print(f"Attempted to cancel order for: {order['ticker']}. Please check the dashboard to ensure canceled.")
+    except Exception as e:
+        print(f"Error canceling order: {e}")
 
 # Get Order
 async def get_order(client, order_id):
-    return await client.indexer_account.account.get_order(order_id)
+    try:
+        return await client.indexer_account.account.get_order(order_id)
+    except Exception as e:
+        print(f"Error fetching order {order_id}: {e}")
+        return None
 
 # Get Account
 async def get_account(client):
-    account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
-    return account["subaccount"]
+    try:
+        account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
+        return account["subaccount"]
+    except Exception as e:
+        print(f"Error fetching account info: {e}")
+        return None
 
 # Get Open Positions
 async def get_open_positions(client):
-    response = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
-    return response["subaccount"]["openPerpetualPositions"]
+    try:
+        response = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
+        return response["subaccount"]["openPerpetualPositions"]
+    except Exception as e:
+        print(f"Error fetching open positions: {e}")
+        return {}
 
 # Check if Positions are Open
 async def is_open_positions(client, market):
-    time.sleep(0.2)
-    response = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
-    open_positions = response["subaccount"]["openPerpetualPositions"]
-    return market in open_positions.keys()
+    try:
+        time.sleep(0.2)
+        response = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
+        open_positions = response["subaccount"]["openPerpetualPositions"]
+        return market in open_positions.keys()
+    except Exception as e:
+        print(f"Error checking open positions for {market}: {e}")
+        return False
 
 # Place Market Order
 async def place_market_order(client, market, side, size, price, reduce_only):
@@ -164,7 +198,3 @@ async def place_market_order(client, market, side, size, price, reduce_only):
     except Exception as e:
         print(f"Error placing market order: {e}")
         return None
-
-# Get Markets (Missing Function)
-async def get_markets(client):
-    return await client.indexer.markets.get_perpetual_markets()
