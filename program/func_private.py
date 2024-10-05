@@ -43,7 +43,19 @@ async def get_order(client, order_id):
 async def get_account(client):
     try:
         account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
-        return account["subaccount"]
+
+        # Check if 'subaccount' exists and handle missing keys
+        if account and 'subaccount' in account:
+            subaccount = account['subaccount']
+
+            # Check if 'accountValue' exists, or use 'equity' for balance
+            balance = float(subaccount.get('accountValue', subaccount.get('equity', 0)))
+
+            # Cleanly display the balance
+            print(f"Account balance: {balance}")
+            return subaccount
+        else:
+            raise ValueError("Subaccount or account data not found in response.")
     except Exception as e:
         print(f"Error fetching account info: {e}")
         return None
