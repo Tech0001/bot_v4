@@ -46,24 +46,44 @@ async def get_candles_historical(client, market):
     return close_prices
 
 # Fetch market prices directly for cointegration calculation
-async def fetch_market_prices(client):
+async def fetch_market_prices(client, limit_tokens=None):
     try:
         # Fetch all markets data from the perpetual markets
         response = await client.indexer.markets.get_perpetual_markets()
         markets_data = response["markets"]
 
-        # Initialize a dictionary to store close prices for each market
-        prices_dict = {}
+        # Initialize a list of tradeable markets
+        tradeable_markets = [market for market in markets_data]
 
-        # Fetch recent candles for each active market
-        for market in markets_data:
-            print(f"Fetching recent prices for market: {market}")
-            prices_dict[market] = await get_candles_recent(client, market)
-            time.sleep(0.2)  # Adding rate-limiting between requests
+        # Limit the number of tokens to fetch if specified
+        if limit_tokens:
+            tradeable_markets = tradeable_markets[:limit_tokens]
 
-        # Convert the prices dictionary into a DataFrame for easy manipulation
-        df_market_prices = pd.DataFrame(prices_dict)
-        return df_market_prices
+        # Set initial DataFrame with first market
+        print(f"Fetching historical prices for {tradeable_markets[0]}...")
+        close_prices = await get_candles_historical(client, tradeable_markets[0])
+        df = pd.DataFrame(close_prices)
+        df.set_index("datetime", inplace=True)
+
+        # Append other prices to DataFrame
+        for (i, market) in enumerate(tradeable_markets[1:], 1):
+            print(f"Extracting prices for {i + 1} of {len(tradeable_markets)} tokens for {market}")
+            close_prices_add = await get_candles_historical(client, market)
+            df_add = pd.DataFrame(close_prices_add)
+            try:
+                df_add.set_index("datetime", inplace=True)
+                df = pd.merge(df, df_add, how="outer", on="datetime", copy=False)
+            except Exception as e:
+                print(f"Failed to add {market} - {e}")
+            del df_add
+
+        # Check any columns with NaNs and drop them
+        nans = df.columns[df.isna().any()].tolist()
+        if len(nans) > 0:
+            print("Dropping columns with NaNs: ", nans)
+            df.drop(columns=nans, inplace=True)
+
+        return df
 
     except Exception as e:
         print(f"Error fetching market prices: {e}")
