@@ -44,16 +44,18 @@ async def get_account(client):
     try:
         account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
 
-        # Check if 'subaccount' exists and handle missing keys
         if account and 'subaccount' in account:
             subaccount = account['subaccount']
 
-            # Check if 'accountValue' exists, or use 'equity' for balance
+            # Process open positions and balance
+            asset_positions = subaccount.get('assetPositions', {})
+            open_positions = subaccount.get('openPerpetualPositions', {})
             balance = float(subaccount.get('accountValue', subaccount.get('equity', 0)))
 
-            # Cleanly display the balance
-            print(f"Account balance: {balance}")
-            return subaccount
+            return {
+                "balance": balance,
+                "positions": asset_positions
+            }
         else:
             raise ValueError("Subaccount or account data not found in response.")
     except Exception as e:
@@ -69,17 +71,6 @@ async def get_open_positions(client):
         print(f"Error fetching open positions: {e}")
         return {}
 
-# Check if Positions are Open
-async def is_open_positions(client, market):
-    try:
-        time.sleep(0.2)
-        response = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
-        open_positions = response["subaccount"]["openPerpetualPositions"]
-        return market in open_positions.keys()
-    except Exception as e:
-        print(f"Error checking open positions for {market}: {e}")
-        return False
-
 # Place Market Order
 async def place_market_order(client, market, side, size, price, reduce_only):
     try:
@@ -94,10 +85,8 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         )
         good_til_block = current_block + 1 + 10
 
-        # Set Time In Force
         time_in_force = Order.TIME_IN_FORCE_IOC  # Immediate or Cancel
 
-        # Place Market Order
         order = await client.node.place_order(
             client.wallet,
             market_data.order(
