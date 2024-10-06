@@ -77,14 +77,18 @@ async def open_positions(client):
 
                 # Check holdings for base and quote
                 asset_positions = account.get('assetPositions', {})
-                
-                # Strip "-USD" suffix to handle asset symbol mismatches
+
+                # Improved symbol matching logic
+                def get_asset_symbol(symbol):
+                    """Handle different variations of the asset symbol."""
+                    return asset_positions.get(symbol, asset_positions.get(symbol.upper(), {'size': '0'}))
+
+                # Get asset sizes for base and quote markets
                 base_symbol = base_market.split("-")[0]  # Extract "MATIC" from "MATIC-USD"
                 quote_symbol = quote_market.split("-")[0]
 
-                # Attempt to find the symbol in multiple ways to avoid mismatches
-                base_holding = float(asset_positions.get(base_symbol, {'size': '0'})['size'])
-                quote_holding = float(asset_positions.get(quote_symbol, {'size': '0'})['size'])
+                base_holding = float(get_asset_symbol(base_symbol)['size'])
+                quote_holding = float(get_asset_symbol(quote_symbol)['size'])
 
                 print(f"Checking holdings for {base_market} ({base_symbol}): {base_holding} and {quote_market} ({quote_symbol}): {quote_holding}")
 
