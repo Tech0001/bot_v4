@@ -121,8 +121,8 @@ async def manage_trade_exits(client):
             price_m2 = float(series_2[-1])
             tick_size_m1 = markets["markets"][position_market_m1]["tickSize"]
             tick_size_m2 = markets["markets"][position_market_m2]["tickSize"]
-            accept_price_m1 = format_number(price_m1 * (1.05 if side_m1 == "BUY" else 0.95), tick_size_m1)
-            accept_price_m2 = format_number(price_m2 * (1.05 if side_m2 == "BUY" else 0.95), tick_size_m2)
+            accept_price_m1 = format_number(price_m1 * (1.01 if side_m1 == "BUY" else 0.99), tick_size_m1)
+            accept_price_m2 = format_number(price_m2 * (1.01 if side_m2 == "BUY" else 0.99), tick_size_m2)
 
             # Close positions
             try:
