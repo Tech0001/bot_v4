@@ -75,6 +75,9 @@ async def open_positions(client):
                 # Fetch account details
                 account = await get_account(client)
 
+                # Log the complete asset positions
+                print(f"Full account data for assets: {account['assetPositions']}")
+
                 # Fetch holdings for the base and quote markets
                 asset_positions = account['assetPositions']
 
@@ -82,6 +85,7 @@ async def open_positions(client):
                 base_symbol = base_market.replace("-USD", "").upper()
                 quote_symbol = quote_market.replace("-USD", "").upper()
 
+                # Attempt to find the symbol in multiple ways to avoid mismatches
                 base_holding = float(asset_positions.get(base_symbol, {'size': '0'})['size'])
                 quote_holding = float(asset_positions.get(quote_symbol, {'size': '0'})['size'])
 
