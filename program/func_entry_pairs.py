@@ -65,19 +65,14 @@ async def open_positions(client):
             spread = series_1 - (hedge_ratio * series_2)
             z_score = calculate_zscore(spread).values.tolist()[-1]
 
-            # Initialize base_side and quote_side safely
-            base_side, quote_side = None, None
-
-            # Only proceed if the z-score is above or below the threshold
             if abs(z_score) >= ZSCORE_THRESH:
                 is_base_open = await is_market_open(client, base_market)
                 is_quote_open = await is_market_open(client, quote_market)
 
-                # Set trading logic for each pair
-                base_side = "BUY" if z_score < 0 else "SELL"
-                quote_side = "BUY" if z_score > 0 else "SELL"
-
                 if not is_base_open and not is_quote_open:
+                    base_side = "BUY" if z_score < 0 else "SELL"
+                    quote_side = "BUY" if z_score > 0 else "SELL"
+
                     base_price = series_1[-1]
                     quote_price = series_2[-1]
                     accept_base_price = float(base_price) * 1.01 if z_score < 0 else float(base_price) * 0.99
@@ -109,8 +104,9 @@ async def open_positions(client):
                     base_size = format_number(base_quantity, base_step_size)
                     quote_size = format_number(quote_quantity, quote_step_size)
 
-                    # Ensure sufficient collateral
-                    free_collateral = float((await get_account(client))["balance"])
+                    account = await get_account(client)
+                    free_collateral = float(account["freeCollateral"])
+
                     if free_collateral < USD_MIN_COLLATERAL:
                         print("Insufficient collateral to place the trade.")
                         break
