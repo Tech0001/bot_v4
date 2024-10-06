@@ -68,42 +68,14 @@ async def open_positions(client):
             # Initialize base_side and quote_side safely
             base_side, quote_side = None, None
 
+            # Only proceed if the z-score is above or below the threshold
             if abs(z_score) >= ZSCORE_THRESH:
                 is_base_open = await is_market_open(client, base_market)
                 is_quote_open = await is_market_open(client, quote_market)
 
-                # Fetch account details
-                account = await get_account(client)
-
-                # Check holdings for base and quote
-                asset_positions = account.get('assetPositions', {})
-
-                # Improved symbol matching logic
-                def get_asset_symbol(symbol):
-                    """Handle different variations of the asset symbol."""
-                    return asset_positions.get(symbol, asset_positions.get(symbol.upper(), {'size': '0'}))
-
-                # Get asset sizes for base and quote markets
-                base_symbol = base_market.split("-")[0]  # Extract "MATIC" from "MATIC-USD"
-                quote_symbol = quote_market.split("-")[0]
-
-                base_holding = float(get_asset_symbol(base_symbol)['size'])
-                quote_holding = float(get_asset_symbol(quote_symbol)['size'])
-
-                print(f"Checking holdings for {base_market} ({base_symbol}): {base_holding} and {quote_market} ({quote_symbol}): {quote_holding}")
-
-                # Set base_side and quote_side early
+                # Set trading logic for each pair
                 base_side = "BUY" if z_score < 0 else "SELL"
                 quote_side = "BUY" if z_score > 0 else "SELL"
-
-                # Check if you have enough base and quote holdings before placing a sell order
-                if base_side == "SELL" and base_holding == 0:
-                    print(f"Skipping {base_market} sell order: No holdings found.")
-                    continue
-
-                if quote_side == "SELL" and quote_holding == 0:
-                    print(f"Skipping {quote_market} sell order: No holdings found.")
-                    continue
 
                 if not is_base_open and not is_quote_open:
                     base_price = series_1[-1]
@@ -137,8 +109,8 @@ async def open_positions(client):
                     base_size = format_number(base_quantity, base_step_size)
                     quote_size = format_number(quote_quantity, quote_step_size)
 
-                    free_collateral = float(account["freeCollateral"])
-
+                    # Ensure sufficient collateral
+                    free_collateral = float((await get_account(client))["balance"])
                     if free_collateral < USD_MIN_COLLATERAL:
                         print("Insufficient collateral to place the trade.")
                         break

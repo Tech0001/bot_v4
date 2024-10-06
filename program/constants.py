@@ -8,7 +8,7 @@ MARKET_DATA_MODE = "TESTNET" # vs "MAINNET"
 ABORT_ALL_POSITIONS = False
 
 # Find Cointegrated Pairs
-FIND_COINTEGRATED = False
+FIND_COINTEGRATED = True
 
 # Manage Exits
 MANAGE_EXITS = True
@@ -24,8 +24,8 @@ WINDOW = 21
 
 # Thresholds - Opening
 MAX_HALF_LIFE = 24
-ZSCORE_THRESH = 1.28
-USD_PER_TRADE = 100
+ZSCORE_THRESH = 2.1
+USD_PER_TRADE = 50
 USD_MIN_COLLATERAL = 100
 
 # Thresholds - Closing
