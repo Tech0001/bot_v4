@@ -77,13 +77,15 @@ async def open_positions(client):
 
                 # Fetch holdings for the base and quote markets
                 asset_positions = account['assetPositions']
-                
-                # Normalize market symbol before accessing holdings
-                base_symbol = base_market.replace("-USD", "")
-                quote_symbol = quote_market.replace("-USD", "")
+
+                # Standardize asset symbols for comparison
+                base_symbol = base_market.replace("-USD", "").upper()
+                quote_symbol = quote_market.replace("-USD", "").upper()
 
                 base_holding = float(asset_positions.get(base_symbol, {'size': '0'})['size'])
                 quote_holding = float(asset_positions.get(quote_symbol, {'size': '0'})['size'])
+
+                print(f"Checking holdings for {base_market} ({base_symbol}): {base_holding} and {quote_market} ({quote_symbol}): {quote_holding}")
 
                 # Set base_side and quote_side early
                 base_side = "BUY" if z_score < 0 else "SELL"
