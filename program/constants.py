@@ -5,7 +5,7 @@ from decouple import config
 MARKET_DATA_MODE = "TESTNET" # vs "MAINNET"
 
 # Close all open positions and orders
-ABORT_ALL_POSITIONS = True
+ABORT_ALL_POSITIONS = False
 
 # Find Cointegrated Pairs
 FIND_COINTEGRATED = True
