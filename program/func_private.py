@@ -33,10 +33,6 @@ async def cancel_order(client, order_id):
 
 # Get Perpetual Markets
 async def get_perpetual_markets(client):
-    """
-    Fetch the perpetual markets available on dYdX.
-    This function is used to ensure we're fetching the correct market data.
-    """
     try:
         response = await client.indexer.markets.get_perpetual_markets()
         if "markets" in response:
@@ -70,7 +66,8 @@ async def check_account_balance(client, required_amount):
     """
     try:
         account = await get_account(client)
-        free_collateral = float(account['collateralBalance'])  # Fetch the available collateral
+        # Using a safer method to retrieve collateral balance
+        free_collateral = float(account.get('collateralBalance', 0))  # Fetch the available collateral
         print(f"Free Collateral: {free_collateral}")
         
         if free_collateral >= required_amount:
@@ -240,3 +237,4 @@ async def check_order_status(client, order_id):
     except Exception as e:
         print(f"Error checking order status for {order_id}: {e}")
         return "UNKNOWN"
+
