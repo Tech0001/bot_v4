@@ -240,7 +240,3 @@ async def check_order_status(client, order_id):
     except Exception as e:
         print(f"Error checking order status for {order_id}: {e}")
         return "UNKNOWN"
-
-# Add Delay Between Different Orders (for multiple orders placed in succession)
-async def delay_between_orders():
-    time.sleep(5)  # Introduce a 5-second delay before placing the next order
