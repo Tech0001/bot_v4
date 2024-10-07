@@ -12,8 +12,8 @@ async def cancel_order(client, order_id):
         order = await get_order(client, order_id)
         if order is None:
             raise ValueError(f"Order {order_id} not found.")
-        
-        market = Market((await client.indexer.markets.get_perpetual_markets(order["ticker"]))["markets"][order["ticker"]])
+
+        market = Market((await get_perpetual_markets(client))[order["ticker"]])
         market_order_id = market.order_id(
             DYDX_ADDRESS,
             0,
@@ -31,6 +31,22 @@ async def cancel_order(client, order_id):
     except Exception as e:
         print(f"Error canceling order: {e}")
 
+# Get Perpetual Markets
+async def get_perpetual_markets(client):
+    """
+    Fetch the perpetual markets available on dYdX.
+    This function is used to ensure we're fetching the correct market data.
+    """
+    try:
+        response = await client.indexer.markets.get_perpetual_markets()
+        if "markets" in response:
+            return response["markets"]
+        else:
+            raise ValueError("Markets data is missing or invalid.")
+    except Exception as e:
+        print(f"Error fetching markets data: {e}")
+        return {}
+
 # Get Order
 async def get_order(client, order_id):
     try:
@@ -39,7 +55,7 @@ async def get_order(client, order_id):
         print(f"Error fetching order {order_id}: {e}")
         return None
 
-# Get Account
+# Get Account (With Available Collateral Check)
 async def get_account(client):
     try:
         account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
@@ -47,6 +63,24 @@ async def get_account(client):
     except Exception as e:
         print(f"Error fetching account info: {e}")
         return None
+
+async def check_account_balance(client, required_amount):
+    """
+    Checks if there is enough collateral to place the order.
+    """
+    try:
+        account = await get_account(client)
+        free_collateral = float(account['collateralBalance'])  # Fetch the available collateral
+        print(f"Free Collateral: {free_collateral}")
+        
+        if free_collateral >= required_amount:
+            return True
+        else:
+            print(f"Insufficient collateral: {free_collateral} available, {required_amount} needed.")
+            return False
+    except Exception as e:
+        print(f"Error checking account balance: {e}")
+        return False
 
 # Get Open Positions
 async def get_open_positions(client):
@@ -68,12 +102,16 @@ async def is_open_positions(client, market):
         print(f"Error checking open positions for {market}: {e}")
         return False
 
-# Place Market Order
-async def place_market_order(client, market, side, size, price, reduce_only):
+# Place Market Order (with balance check)
+async def place_market_order(client, market, side, size, price, reduce_only, required_collateral):
     try:
+        # Check if there's enough balance
+        if not await check_account_balance(client, required_collateral):
+            return {"status": "failed", "error": "Insufficient collateral"}
+
         ticker = market
         current_block = await client.node.latest_block_height()
-        market_data = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
+        market_data = Market((await get_perpetual_markets(client))[market])
         market_order_id = market_data.order_id(
             DYDX_ADDRESS,
             0,
@@ -99,8 +137,10 @@ async def place_market_order(client, market, side, size, price, reduce_only):
             ),
         )
 
+        # Increase delay before fetching recent orders to confirm placement
+        time.sleep(3)
+
         # Fetch recent orders to confirm placement
-        time.sleep(1.5)
         orders = await client.indexer_account.account.get_subaccount_orders(
             DYDX_ADDRESS,
             0,
@@ -147,10 +187,9 @@ async def abort_all_positions(client):
         await cancel_all_orders(client)
 
         # Fetch all available markets
-        markets_response = await client.indexer.markets.get_perpetual_markets()
-        if not markets_response or "markets" not in markets_response:
+        markets = await get_perpetual_markets(client)
+        if not markets:
             raise ValueError("Markets data is missing or invalid.")
-        markets = markets_response["markets"]
 
         # Fetch all open positions
         positions = await get_open_positions(client)
@@ -172,7 +211,7 @@ async def abort_all_positions(client):
                 accept_price = format_number(accept_price, tick_size)
 
                 # Place market order to close position
-                result = await place_market_order(client, market, side, pos["sumOpen"], accept_price, True)
+                result = await place_market_order(client, market, side, pos["sumOpen"], accept_price, True, 0)
 
                 if result["status"] == "failed":
                     print(f"Error closing position for {market}: {result['error']}")
@@ -201,3 +240,7 @@ async def check_order_status(client, order_id):
     except Exception as e:
         print(f"Error checking order status for {order_id}: {e}")
         return "UNKNOWN"
+
+# Add Delay Between Different Orders (for multiple orders placed in succession)
+async def delay_between_orders():
+    time.sleep(5)  # Introduce a 5-second delay before placing the next order
