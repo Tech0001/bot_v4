@@ -1,7 +1,7 @@
 from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
-from func_public import get_candles_recent
+from func_public import get_candles_recent, get_markets
 from func_private import get_open_positions, get_account, place_market_order
 from func_bot_agent import BotAgent
 import pandas as pd
@@ -14,15 +14,6 @@ async def is_market_open(client, market):
     open_positions = await get_open_positions(client)
     return market in open_positions.keys()
 
-# Fetch market data directly
-async def fetch_market_data(client, market):
-    try:
-        response = await client.indexer.markets.get_perpetual_markets()
-        return response["markets"][market]
-    except Exception as e:
-        print(f"Error fetching market data for {market}: {e}")
-        return None
-
 # Function to open positions based on cointegration signals
 async def open_positions(client):
     """
@@ -32,6 +23,9 @@ async def open_positions(client):
 
     # Load cointegrated pairs
     df = pd.read_csv("cointegrated_pairs.csv")
+
+    # Fetch all markets data at once to reduce API calls
+    markets = await get_markets(client)
 
     bot_agents = []
 
@@ -77,14 +71,13 @@ async def open_positions(client):
                     quote_price = series_2[-1]
                     accept_base_price = float(base_price) * 1.01 if z_score < 0 else float(base_price) * 0.99
                     accept_quote_price = float(quote_price) * 1.01 if z_score > 0 else float(quote_price) * 0.99
-
                     failsafe_base_price = float(base_price) * 0.05 if z_score < 0 else float(base_price) * 1.7
 
-                    # Fetch market data for both base and quote markets
-                    market_base_data = await fetch_market_data(client, base_market)
-                    market_quote_data = await fetch_market_data(client, quote_market)
-
-                    if market_base_data is None or market_quote_data is None:
+                    # Fetch market data for both base and quote markets from pre-fetched data
+                    try:
+                        market_base_data = markets["markets"][base_market]
+                        market_quote_data = markets["markets"][quote_market]
+                    except KeyError:
                         print(f"Error fetching market data for {base_market} or {quote_market}")
                         continue
 
@@ -104,6 +97,15 @@ async def open_positions(client):
                     base_size = format_number(base_quantity, base_step_size)
                     quote_size = format_number(quote_quantity, quote_step_size)
 
+                    # Ensure size is greater than the minimum order size
+                    base_min_order_size = 1 / float(market_base_data["oraclePrice"])
+                    quote_min_order_size = 1 / float(market_quote_data["oraclePrice"])
+
+                    if base_quantity < base_min_order_size or quote_quantity < quote_min_order_size:
+                        print(f"Order size for {base_market} or {quote_market} is too small to trade.")
+                        continue
+
+                    # Check account balance
                     account = await get_account(client)
                     free_collateral = float(account["freeCollateral"])
 
