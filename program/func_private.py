@@ -51,7 +51,7 @@ async def get_order(client, order_id):
         print(f"Error fetching order {order_id}: {e}")
         return None
 
-# Get Account (With Available Collateral Check)
+# Get Account
 async def get_account(client):
     try:
         account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
@@ -59,25 +59,6 @@ async def get_account(client):
     except Exception as e:
         print(f"Error fetching account info: {e}")
         return None
-
-async def check_account_balance(client, required_amount):
-    """
-    Checks if there is enough collateral to place the order.
-    """
-    try:
-        account = await get_account(client)
-        # Using a safer method to retrieve collateral balance
-        free_collateral = float(account.get('collateralBalance', 0))  # Fetch the available collateral
-        print(f"Free Collateral: {free_collateral}")
-        
-        if free_collateral >= required_amount:
-            return True
-        else:
-            print(f"Insufficient collateral: {free_collateral} available, {required_amount} needed.")
-            return False
-    except Exception as e:
-        print(f"Error checking account balance: {e}")
-        return False
 
 # Get Open Positions
 async def get_open_positions(client):
@@ -99,13 +80,9 @@ async def is_open_positions(client, market):
         print(f"Error checking open positions for {market}: {e}")
         return False
 
-# Place Market Order (with balance check)
-async def place_market_order(client, market, side, size, price, reduce_only, required_collateral):
+# Place Market Order
+async def place_market_order(client, market, side, size, price, reduce_only):
     try:
-        # Check if there's enough balance
-        if not await check_account_balance(client, required_collateral):
-            return {"status": "failed", "error": "Insufficient collateral"}
-
         ticker = market
         current_block = await client.node.latest_block_height()
         market_data = Market((await get_perpetual_markets(client))[market])
@@ -208,7 +185,7 @@ async def abort_all_positions(client):
                 accept_price = format_number(accept_price, tick_size)
 
                 # Place market order to close position
-                result = await place_market_order(client, market, side, pos["sumOpen"], accept_price, True, 0)
+                result = await place_market_order(client, market, side, pos["sumOpen"], accept_price, True)
 
                 if result["status"] == "failed":
                     print(f"Error closing position for {market}: {result['error']}")
@@ -237,4 +214,3 @@ async def check_order_status(client, order_id):
     except Exception as e:
         print(f"Error checking order status for {order_id}: {e}")
         return "UNKNOWN"
-
