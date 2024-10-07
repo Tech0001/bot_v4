@@ -58,47 +58,44 @@ class BotAgent:
             "comments": "",
         }
 
-    async def check_order_status_by_id(self, order_id):
+    async def check_order_status_by_id(self, order_id, retries=3):
         # Allow time to process
-        await asyncio.sleep(2)  # Asynchronous wait
+        await asyncio.sleep(10)  # Increased delay to ensure the order is registered
+        
+        # Retry mechanism to check the order status
+        for retry in range(retries):
+            try:
+                # Check if the order ID is valid
+                if not order_id or order_id == "order_id":
+                    print(f"Invalid order_id: {order_id}")
+                    self.order_dict["pair_status"] = "ERROR"
+                    return "error"
 
-        # Ensure the order_id is valid
-        if not order_id or order_id == "order_id":
-            print(f"Invalid order_id: {order_id}")
-            self.order_dict["pair_status"] = "ERROR"
-            return "error"
+                # Check order status
+                order_status = await check_order_status(self.client, order_id)
+                if not order_status:
+                    raise ValueError(f"Failed to retrieve order status for order_id: {order_id}")
 
-        # Check order status
-        try:
-            order_status = await check_order_status(self.client, order_id)
-            if not order_status:
-                raise ValueError(f"Failed to retrieve order status for order_id: {order_id}")
-        except Exception as e:
-            print(f"Error checking order status: {e}")
-            self.order_dict["pair_status"] = "ERROR"
-            return "error"
+                if order_status == "FILLED":
+                    print(f"Order {order_id} successfully filled.")
+                    return "live"
 
-        if order_status == "CANCELED":
-            print(f"Order {order_id} canceled.")
-            self.order_dict["pair_status"] = "FAILED"
-            return "failed"
+                if order_status == "CANCELED":
+                    print(f"Order {order_id} canceled.")
+                    self.order_dict["pair_status"] = "FAILED"
+                    return "failed"
 
-        # Wait for 15 seconds to ensure order fills
-        await asyncio.sleep(15)
-        order_status = await check_order_status(self.client, order_id)
-
-        if order_status == "CANCELED":
-            print(f"Order {order_id} canceled after retry.")
-            self.order_dict["pair_status"] = "FAILED"
-            return "failed"
-
-        if order_status != "FILLED":
-            await cancel_order(self.client, order_id)
-            self.order_dict["pair_status"] = "ERROR"
-            print(f"Order {order_id} not filled. Cancelling order.")
-            return "error"
-
-        return "live"
+                # Retry after a short delay
+                await asyncio.sleep(10)
+            except Exception as e:
+                print(f"Error checking order status: {e}")
+                self.order_dict["pair_status"] = "ERROR"
+        
+        # After retries, if order status is not found
+        await cancel_order(self.client, order_id)
+        print(f"Order {order_id} not filled after retries. Cancelling order.")
+        self.order_dict["pair_status"] = "ERROR"
+        return "error"
 
     async def open_trades(self):
         # Place first order
@@ -122,6 +119,9 @@ class BotAgent:
             self.order_dict["order_id_m1"] = order_id_m1
             self.order_dict["order_time_m1"] = datetime.now().isoformat()
             print(f"First order placed successfully for {self.market_1}: {order_id_m1}")
+            
+            # Introduce a longer delay before checking status
+            await asyncio.sleep(10)
         except Exception as e:
             print(f"Error placing first order: {e}")
             self.order_dict["pair_status"] = "ERROR"
@@ -158,6 +158,9 @@ class BotAgent:
             self.order_dict["order_id_m2"] = order_id_m2
             self.order_dict["order_time_m2"] = datetime.now().isoformat()
             print(f"Second order placed successfully for {self.market_2}: {order_id_m2}")
+
+            # Introduce a delay before checking status
+            await asyncio.sleep(10)
         except Exception as e:
             print(f"Error placing second order: {e}")
             self.order_dict["pair_status"] = "ERROR"
@@ -182,7 +185,7 @@ class BotAgent:
                     price=self.accept_failsafe_base_price,
                     reduce_only=True
                 )
-                await asyncio.sleep(2)
+                await asyncio.sleep(5)
                 close_order_status = await check_order_status(self.client, close_order_result.get("order_id"))
                 if close_order_status != "FILLED":
                     print("Error: Failed to close the first order.")
