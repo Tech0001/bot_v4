@@ -1,7 +1,7 @@
 from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
 from func_utils import format_number
 from func_cointegration import calculate_zscore
-from func_public import get_candles_recent, get_markets
+from func_public import get_candles_recent
 from func_private import get_open_positions, get_account, place_market_order
 from func_bot_agent import BotAgent
 import pandas as pd
@@ -13,6 +13,18 @@ IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]
 async def is_market_open(client, market):
     open_positions = await get_open_positions(client)
     return market in open_positions.keys()
+
+# Fetch market data once at the start of the process
+async def get_markets(client):
+    try:
+        response = await client.indexer.markets.get_perpetual_markets()
+        if "markets" in response:
+            return response
+        else:
+            raise ValueError("Markets data not available.")
+    except Exception as e:
+        print(f"Error fetching markets data: {e}")
+        return None
 
 # Function to open positions based on cointegration signals
 async def open_positions(client):
@@ -37,8 +49,13 @@ async def open_positions(client):
 
     # Fetch markets data at the start
     markets = await get_markets(client)
+    if markets is None:
+        print("Error: Could not retrieve markets data.")
+        return
+
     if "markets" not in markets:
-        raise ValueError("Error: Markets data not available")
+        print("Error: Markets data not available.")
+        return
 
     # Loop through pairs to find opportunities
     for index, row in df.iterrows():
@@ -47,24 +64,16 @@ async def open_positions(client):
         hedge_ratio = row["hedge_ratio"]
         half_life = row["half_life"]
 
-        # Skip ignored markets
         if base_market in IGNORE_ASSETS or quote_market in IGNORE_ASSETS:
             continue
 
-        # Check if market data exists
-        if base_market not in markets["markets"] or quote_market not in markets["markets"]:
-            print(f"Skipping pair {base_market}-{quote_market}: Market data not available")
-            continue
-
         try:
-            # Fetch recent candle data for the pair
             series_1 = await get_candles_recent(client, base_market)
             series_2 = await get_candles_recent(client, quote_market)
         except Exception as e:
-            print(f"Error fetching prices: {e}")
+            print(f"Error fetching prices for {base_market} or {quote_market}: {e}")
             continue
 
-        # Ensure data length matches
         if len(series_1) > 0 and len(series_1) == len(series_2):
             spread = series_1 - (hedge_ratio * series_2)
             z_score = calculate_zscore(spread).values.tolist()[-1]
@@ -73,7 +82,6 @@ async def open_positions(client):
                 is_base_open = await is_market_open(client, base_market)
                 is_quote_open = await is_market_open(client, quote_market)
 
-                # Only trade if both markets are not open
                 if not is_base_open and not is_quote_open:
                     base_side = "BUY" if z_score < 0 else "SELL"
                     quote_side = "BUY" if z_score > 0 else "SELL"
@@ -82,41 +90,48 @@ async def open_positions(client):
                     quote_price = series_2[-1]
                     accept_base_price = float(base_price) * 1.01 if z_score < 0 else float(base_price) * 0.99
                     accept_quote_price = float(quote_price) * 1.01 if z_score > 0 else float(quote_price) * 0.99
+
                     failsafe_base_price = float(base_price) * 0.05 if z_score < 0 else float(base_price) * 1.7
 
-                    # Get market data for base and quote
-                    base_tick_size = markets["markets"][base_market]["tickSize"]
-                    quote_tick_size = markets["markets"][quote_market]["tickSize"]
+                    # Fetch tick size and step size from pre-fetched markets data
+                    try:
+                        base_tick_size = markets["markets"][base_market]["tickSize"]
+                        quote_tick_size = markets["markets"][quote_market]["tickSize"]
+
+                        base_step_size = markets["markets"][base_market]["stepSize"]
+                        quote_step_size = markets["markets"][quote_market]["stepSize"]
+
+                        base_min_order_size = 1 / float(markets["markets"][base_market]["oraclePrice"])
+                        quote_min_order_size = 1 / float(markets["markets"][quote_market]["oraclePrice"])
+                    except KeyError:
+                        print(f"Error: Market data not found for {base_market} or {quote_market}")
+                        continue
 
                     # Format prices
                     accept_base_price = format_number(accept_base_price, base_tick_size)
                     accept_quote_price = format_number(accept_quote_price, quote_tick_size)
                     accept_failsafe_base_price = format_number(failsafe_base_price, base_tick_size)
 
+                    # Get size
                     base_quantity = 1 / base_price * USD_PER_TRADE
                     quote_quantity = 1 / quote_price * USD_PER_TRADE
 
-                    # Get size and ensure minimum order size
-                    base_step_size = markets["markets"][base_market]["stepSize"]
-                    quote_step_size = markets["markets"][quote_market]["stepSize"]
+                    # Format sizes
                     base_size = format_number(base_quantity, base_step_size)
                     quote_size = format_number(quote_quantity, quote_step_size)
 
-                    base_min_order_size = 1 / float(markets["markets"][base_market]["oraclePrice"])
-                    quote_min_order_size = 1 / float(markets["markets"][quote_market]["oraclePrice"])
-
-                    # Check if the sizes meet the minimum order requirement
+                    # Ensure order sizes are greater than the minimum allowed size
                     if float(base_quantity) < base_min_order_size or float(quote_quantity) < quote_min_order_size:
-                        print(f"Skipping pair {base_market}-{quote_market}: Trade size below minimum")
+                        print(f"Trade size too small for {base_market} or {quote_market}")
                         continue
 
-                    # Check account collateral
+                    # Check account balance
                     account = await get_account(client)
                     free_collateral = float(account["freeCollateral"])
 
                     if free_collateral < USD_MIN_COLLATERAL:
-                        print(f"Insufficient collateral for {base_market}-{quote_market}. Available: {free_collateral}")
-                        break
+                        print(f"Insufficient collateral to place the trade for {base_market} and {quote_market}.")
+                        continue
 
                     # Place the base order
                     base_order_result = await place_market_order(client, base_market, base_side, base_size, accept_base_price, False)
@@ -160,6 +175,4 @@ async def open_positions(client):
                         bot_agents.append(bot_open_dict)
                         with open("bot_agents.json", "w") as f:
                             json.dump(bot_agents, f)
-                        print("Trade opened successfully.")
-
-    print(f"Managing trades complete.")
+                        print(f"Trade opened successfully for {base_market} and {quote_market}.")
