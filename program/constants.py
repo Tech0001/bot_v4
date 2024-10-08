@@ -14,6 +14,7 @@ SPECIFIC_PAIRS = [
     "XTZ-USD",
     "FIL-USD",
     "SNX-USD",
+    "YFI-USD",
     
     # Add up to 10 pairs here
 ]
@@ -41,8 +42,8 @@ WINDOW = 24
 
 # Thresholds - Opening
 MAX_HALF_LIFE = 10
-ZSCORE_THRESH = 0.9
-USD_PER_TRADE = 25
+ZSCORE_THRESH = 0.1
+USD_PER_TRADE = 100
 USD_MIN_COLLATERAL = 100
 
 # Thresholds - Closing
