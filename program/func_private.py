@@ -12,8 +12,8 @@ async def cancel_order(client, order_id):
         order = await get_order(client, order_id)
         if order is None:
             raise ValueError(f"Order {order_id} not found.")
-
-        market = Market((await get_perpetual_markets(client))[order["ticker"]])
+        
+        market = Market((await client.indexer.markets.get_perpetual_markets(order["ticker"]))["markets"][order["ticker"]])
         market_order_id = market.order_id(
             DYDX_ADDRESS,
             0,
@@ -30,18 +30,6 @@ async def cancel_order(client, order_id):
         print(f"Attempted to cancel order for: {order['ticker']}. Please check the dashboard to ensure it was canceled.")
     except Exception as e:
         print(f"Error canceling order: {e}")
-
-# Get Perpetual Markets
-async def get_perpetual_markets(client):
-    try:
-        response = await client.indexer.markets.get_perpetual_markets()
-        if "markets" in response:
-            return response["markets"]
-        else:
-            raise ValueError("Markets data is missing or invalid.")
-    except Exception as e:
-        print(f"Error fetching markets data: {e}")
-        return {}
 
 # Get Order
 async def get_order(client, order_id):
@@ -85,7 +73,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
     try:
         ticker = market
         current_block = await client.node.latest_block_height()
-        market_data = Market((await get_perpetual_markets(client))[market])
+        market_data = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
         market_order_id = market_data.order_id(
             DYDX_ADDRESS,
             0,
@@ -98,7 +86,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         time_in_force = Order.TIME_IN_FORCE_IOC  # Immediate or Cancel
 
         # Place Market Order
-        await client.node.place_order(
+        order = await client.node.place_order(
             client.wallet,
             market_data.order(
                 market_order_id,
@@ -111,10 +99,8 @@ async def place_market_order(client, market, side, size, price, reduce_only):
             ),
         )
 
-        # Increase delay before fetching recent orders to confirm placement
-        time.sleep(3)
-
         # Fetch recent orders to confirm placement
+        time.sleep(1.5)
         orders = await client.indexer_account.account.get_subaccount_orders(
             DYDX_ADDRESS,
             0,
@@ -161,9 +147,10 @@ async def abort_all_positions(client):
         await cancel_all_orders(client)
 
         # Fetch all available markets
-        markets = await get_perpetual_markets(client)
-        if not markets:
+        markets_response = await client.indexer.markets.get_perpetual_markets()
+        if not markets_response or "markets" not in markets_response:
             raise ValueError("Markets data is missing or invalid.")
+        markets = markets_response["markets"]
 
         # Fetch all open positions
         positions = await get_open_positions(client)

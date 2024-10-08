@@ -6,10 +6,12 @@ from func_public import get_candles_recent, get_markets
 import json
 import time
 
+from pprint import pprint
+
 # Manage trade exits
 async def manage_trade_exits(client):
     """
-    Manage exiting open positions based upon criteria set in constants.
+    Manage exiting open positions based upon criteria set in constants
     """
 
     # Initialize saving output
@@ -35,15 +37,6 @@ async def manage_trade_exits(client):
     # Protect API rate limit
     time.sleep(0.5)
 
-    # Fetch market data once at the beginning
-    try:
-        markets = await get_markets(client)
-        if markets is None or "markets" not in markets:
-            raise ValueError("Markets data not available.")
-    except Exception as e:
-        print(f"Error fetching markets: {e}")
-        return "error"
-
     # Check all saved positions match order record and apply exit logic
     for position in open_positions_dict:
         # Initialize is_close trigger
@@ -60,14 +53,7 @@ async def manage_trade_exits(client):
         position_side_m2 = position["order_m2_side"]
 
         # Get order info for market 1
-        try:
-            order_m1 = await get_order(client, position["order_id_m1"])
-            if order_m1 is None:
-                raise ValueError(f"Order info for {position_market_m1} not found.")
-        except Exception as e:
-            print(f"Error retrieving order for {position_market_m1}: {e}")
-            continue
-        
+        order_m1 = await get_order(client, position["order_id_m1"])
         order_market_m1 = order_m1["ticker"]
         order_size_m1 = order_m1["size"]
         order_side_m1 = order_m1["side"]
@@ -76,19 +62,12 @@ async def manage_trade_exits(client):
         time.sleep(0.5)
 
         # Get order info for market 2
-        try:
-            order_m2 = await get_order(client, position["order_id_m2"])
-            if order_m2 is None:
-                raise ValueError(f"Order info for {position_market_m2} not found.")
-        except Exception as e:
-            print(f"Error retrieving order for {position_market_m2}: {e}")
-            continue
-        
+        order_m2 = await get_order(client, position["order_id_m2"])
         order_market_m2 = order_m2["ticker"]
         order_size_m2 = order_m2["size"]
         order_side_m2 = order_m2["side"]
 
-        # Ensure sizes match what was sent to the exchange
+        ## Ensure sizes match what was sent to the exchange
         position_size_m1 = order_m1["size"]
         position_size_m2 = order_m2["size"]
 
@@ -99,23 +78,25 @@ async def manage_trade_exits(client):
 
         # Guard: If not all match exit with error
         if not check_m1 or not check_m2 or not check_live:
-            print(f"Warning: Open positions for {position_market_m1} and {position_market_m2} do not match exchange records.")
-            continue
+            print(f"Warning: Open positions for {position_market_m1} and {position_market_m2} do not match exchange records")
+            exit(1)
 
         # Get price data
-        try:
-            series_1 = await get_candles_recent(client, position_market_m1)
-            time.sleep(0.2)
-            series_2 = await get_candles_recent(client, position_market_m2)
-            time.sleep(0.2)
-        except Exception as e:
-            print(f"Error fetching candle data for {position_market_m1} or {position_market_m2}: {e}")
-            continue
+        series_1 = await get_candles_recent(client, position_market_m1)
+        time.sleep(0.2)
+        series_2 = await get_candles_recent(client, position_market_m2)
+        time.sleep(0.2)
 
         # Get markets data for reference of tick size
-        if position_market_m1 not in markets["markets"] or position_market_m2 not in markets["markets"]:
-            print(f"Error: Market data not found for {position_market_m1} or {position_market_m2}")
-            continue
+        markets = await get_markets(client)
+
+        # Protect API rate limit
+        time.sleep(0.2)
+
+        # Ensure markets data contains the 'markets' key and that it contains data for both markets
+        if "markets" not in markets or position_market_m1 not in markets["markets"] or position_market_m2 not in markets["markets"]:
+            print(f"Error: 'markets' key not found or missing market data in the response. Skipping position {position_market_m1}/{position_market_m2}.")
+            continue  # Skip the current iteration if the markets data is incomplete
 
         # Trigger close based on Z-Score if specified in constants
         if CLOSE_AT_ZSCORE_CROSS:
@@ -125,12 +106,12 @@ async def manage_trade_exits(client):
                 spread = series_1 - (hedge_ratio * series_2)
                 z_score_current = calculate_zscore(spread).values.tolist()[-1]
 
-                # Determine if Z-score conditions trigger an exit
-                z_score_level_check = abs(z_score_current) >= abs(z_score_traded)
-                z_score_cross_check = (z_score_current < 0 and z_score_traded > 0) or (z_score_current > 0 and z_score_traded < 0)
+            # Determine if Z-score conditions trigger an exit
+            z_score_level_check = abs(z_score_current) >= abs(z_score_traded)
+            z_score_cross_check = (z_score_current < 0 and z_score_traded > 0) or (z_score_current > 0 and z_score_traded < 0)
 
-                if z_score_level_check and z_score_cross_check:
-                    is_close = True
+            if z_score_level_check and z_score_cross_check:
+                is_close = True
 
         # Close positions if triggered
         if is_close:
@@ -145,14 +126,14 @@ async def manage_trade_exits(client):
             price_m2 = float(series_2[-1])
             tick_size_m1 = markets["markets"][position_market_m1]["tickSize"]
             tick_size_m2 = markets["markets"][position_market_m2]["tickSize"]
-            accept_price_m1 = format_number(price_m1 * (1.05 if side_m1 == "BUY" else 0.99), tick_size_m1)
-            accept_price_m2 = format_number(price_m2 * (1.05 if side_m2 == "BUY" else 0.99), tick_size_m2)
+            accept_price_m1 = format_number(price_m1 * (1.05 if side_m1 == "BUY" else 0.95), tick_size_m1)
+            accept_price_m2 = format_number(price_m2 * (1.05 if side_m2 == "BUY" else 0.95), tick_size_m2)
 
             # Close positions
             try:
                 # Close position for market 1
                 print(f"Closing position for {position_market_m1}")
-                close_order_m1 = await place_market_order(client, market=position_market_m1, side=side_m1, size=position_size_m1, price=accept_price_m1, reduce_only=True)
+                close_order_m1, order_id = await place_market_order(client, market=position_market_m1, side=side_m1, size=position_size_m1, price=accept_price_m1, reduce_only=True)
                 print(f"Closed order for market 1: {close_order_m1['id']}")
 
                 # Protect API
@@ -160,7 +141,7 @@ async def manage_trade_exits(client):
 
                 # Close position for market 2
                 print(f"Closing position for {position_market_m2}")
-                close_order_m2 = await place_market_order(client, market=position_market_m2, side=side_m2, size=position_size_m2, price=accept_price_m2, reduce_only=True)
+                close_order_m2, order_id = await place_market_order(client, market=position_market_m2, side=side_m2, size=position_size_m2, price=accept_price_m2, reduce_only=True)
                 print(f"Closed order for market 2: {close_order_m2['id']}")
 
             except Exception as e:
