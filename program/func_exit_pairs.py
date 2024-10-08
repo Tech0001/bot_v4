@@ -6,8 +6,6 @@ from func_public import get_candles_recent, get_markets
 import json
 import time
 
-from pprint import pprint
-
 # Manage trade exits
 async def manage_trade_exits(client):
     """
@@ -126,15 +124,15 @@ async def manage_trade_exits(client):
             price_m2 = float(series_2[-1])
             tick_size_m1 = markets["markets"][position_market_m1]["tickSize"]
             tick_size_m2 = markets["markets"][position_market_m2]["tickSize"]
-            accept_price_m1 = format_number(price_m1 * (1.05 if side_m1 == "BUY" else 0.95), tick_size_m1)
-            accept_price_m2 = format_number(price_m2 * (1.05 if side_m2 == "BUY" else 0.95), tick_size_m2)
+            accept_price_m1 = format_number(price_m1 * (1.05 if side_m1 == "BUY" else 0.99), tick_size_m1)
+            accept_price_m2 = format_number(price_m2 * (1.05 if side_m2 == "BUY" else 0.99), tick_size_m2)
 
             # Close positions
             try:
                 # Close position for market 1
                 print(f"Closing position for {position_market_m1}")
                 close_order_m1, order_id = await place_market_order(client, market=position_market_m1, side=side_m1, size=position_size_m1, price=accept_price_m1, reduce_only=True)
-                print(f"Closed order for market 1: {close_order_m1['id']}")
+                close_order_m1, _ = await place_market_order(client, market=position_market_m1, side=side_m1, size=position_size_m1, price=accept_price_m1, reduce_only=True)
 
                 # Protect API
                 time.sleep(1)
@@ -142,7 +140,7 @@ async def manage_trade_exits(client):
                 # Close position for market 2
                 print(f"Closing position for {position_market_m2}")
                 close_order_m2, order_id = await place_market_order(client, market=position_market_m2, side=side_m2, size=position_size_m2, price=accept_price_m2, reduce_only=True)
-                print(f"Closed order for market 2: {close_order_m2['id']}")
+                close_order_m2, _ = await place_market_order(client, market=position_market_m2, side=side_m2, size=position_size_m2, price=accept_price_m2, reduce_only=True)
 
             except Exception as e:
                 print(f"Error closing positions for {position_market_m1} and {position_market_m2}: {e}")

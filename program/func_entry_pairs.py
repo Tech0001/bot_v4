@@ -45,7 +45,7 @@ async def open_positions(client):
         bot_agents = []
 
     # Loop through pairs to find opportunities
-    for index, row in df.iterrows():
+    for _, row in df.iterrows():
         base_market = row["base_market"]
         quote_market = row["quote_market"]
         hedge_ratio = row["hedge_ratio"]
