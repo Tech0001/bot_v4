@@ -1,4 +1,4 @@
-from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL
+from constants import ZSCORE_THRESH, USD_PER_TRADE, USD_MIN_COLLATERAL, TRADE_SPECIFIC_PAIRS, SPECIFIC_PAIRS
 from func_utils import format_number
 from func_cointegration import calculate_zscore
 from func_public import get_candles_recent
@@ -9,7 +9,7 @@ import json
 
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]
 
-# Helper function to check if a market has an open position
+# Define is_market_open function
 async def is_market_open(client, market):
     open_positions = await get_open_positions(client)
     return market in open_positions.keys()
@@ -48,6 +48,11 @@ async def open_positions(client):
     for _, row in df.iterrows():
         base_market = row["base_market"]
         quote_market = row["quote_market"]
+
+        # Check if TRADE_SPECIFIC_PAIRS is True and filter out non-specific pairs
+        if TRADE_SPECIFIC_PAIRS and (base_market not in SPECIFIC_PAIRS or quote_market not in SPECIFIC_PAIRS):
+            continue
+
         hedge_ratio = row["hedge_ratio"]
         half_life = row["half_life"]
 
@@ -121,36 +126,4 @@ async def open_positions(client):
 
                     # Place the quote order
                     quote_order_result = await place_market_order(client, quote_market, quote_side, quote_size, accept_quote_price, False)
-                    if quote_order_result["status"] == "failed":
-                        print(f"Error placing quote order: {quote_order_result['error']}")
-                        continue
-                    else:
-                        print(f"Second order placed successfully for {quote_market}: {quote_order_result['order_id']}")
-
-                    # Create Bot Agent with accept_failsafe_base_price
-                    bot_agent = BotAgent(
-                        client,
-                        market_1=base_market,
-                        market_2=quote_market,
-                        base_side=base_side,
-                        base_size=base_size,
-                        base_price=accept_base_price,
-                        quote_side=quote_side,
-                        quote_size=quote_size,
-                        quote_price=accept_quote_price,
-                        accept_failsafe_base_price=accept_failsafe_base_price,
-                        z_score=z_score,
-                        half_life=half_life,
-                        hedge_ratio=hedge_ratio
-                    )
-
-                    bot_open_dict = await bot_agent.open_trades()
-
-                    if bot_open_dict == "failed":
-                        continue
-
-                    if bot_open_dict["pair_status"] == "LIVE":
-                        bot_agents.append(bot_open_dict)
-                        with open("bot_agents.json", "w") as f:
-                            json.dump(bot_agents, f)
-                        print("Trade opened successfully.")
+         

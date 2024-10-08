@@ -1,11 +1,24 @@
 # from dydx3.constants import API_HOST_MAINNET, API_HOST_GOERLI
 from decouple import config
 
+# constants.py
+
+# Toggle for trading only specific pairs
+TRADE_SPECIFIC_PAIRS = True  # Set to False to ignore specific pairs
+
+# List of specific pairs to trade (up to 10)
+SPECIFIC_PAIRS = [
+    "MATIC-USD",
+    "ATOM-USD", 
+    
+    # Add up to 10 pairs here
+]
+
 # For gathering tesnet data or live market data for cointegration calculation
 MARKET_DATA_MODE = "TESTNET" # vs "MAINNET"
 
 # Close all open positions and orders
-ABORT_ALL_POSITIONS = False
+ABORT_ALL_POSITIONS = True
 
 # Find Cointegrated Pairs
 FIND_COINTEGRATED = False
@@ -24,7 +37,7 @@ WINDOW = 24
 
 # Thresholds - Opening
 MAX_HALF_LIFE = 20
-ZSCORE_THRESH = 1.75
+ZSCORE_THRESH = 0.0
 USD_PER_TRADE = 25
 USD_MIN_COLLATERAL = 100
 
