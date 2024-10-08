@@ -39,13 +39,30 @@ async def get_order(client, order_id):
         print(f"Error fetching order {order_id}: {e}")
         return None
 
-# Get Account
+# Get Account (Restored for other imports)
 async def get_account(client):
+    """
+    Fetch account details (used in other parts of the bot)
+    """
     try:
         account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
         return account["subaccount"]
     except Exception as e:
         print(f"Error fetching account info: {e}")
+        return None
+
+# Get Account Balance (Restored)
+async def get_account_balance(client):
+    """
+    Fetch and display account balance from dYdX
+    """
+    try:
+        account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
+        balance = account["subaccount"]["balance"]
+        print(f"Account Balance: {balance}")
+        return balance
+    except Exception as e:
+        print(f"Error fetching account balance: {e}")
         return None
 
 # Get Open Positions
