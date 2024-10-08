@@ -98,7 +98,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         time_in_force = Order.TIME_IN_FORCE_IOC  # Immediate or Cancel
 
         # Place Market Order
-        order = await client.node.place_order(
+        await client.node.place_order(
             client.wallet,
             market_data.order(
                 market_order_id,

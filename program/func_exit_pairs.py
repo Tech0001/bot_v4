@@ -36,9 +36,12 @@ async def manage_trade_exits(client):
     time.sleep(0.5)
 
     # Fetch market data once at the beginning
-    markets = await get_markets(client)
-    if markets is None or "markets" not in markets:
-        print("Error: Markets data not available.")
+    try:
+        markets = await get_markets(client)
+        if markets is None or "markets" not in markets:
+            raise ValueError("Markets data not available.")
+    except Exception as e:
+        print(f"Error fetching markets: {e}")
         return "error"
 
     # Check all saved positions match order record and apply exit logic
@@ -57,9 +60,12 @@ async def manage_trade_exits(client):
         position_side_m2 = position["order_m2_side"]
 
         # Get order info for market 1
-        order_m1 = await get_order(client, position["order_id_m1"])
-        if order_m1 is None:
-            print(f"Error: Order info for {position_market_m1} not found.")
+        try:
+            order_m1 = await get_order(client, position["order_id_m1"])
+            if order_m1 is None:
+                raise ValueError(f"Order info for {position_market_m1} not found.")
+        except Exception as e:
+            print(f"Error retrieving order for {position_market_m1}: {e}")
             continue
         
         order_market_m1 = order_m1["ticker"]
@@ -70,9 +76,12 @@ async def manage_trade_exits(client):
         time.sleep(0.5)
 
         # Get order info for market 2
-        order_m2 = await get_order(client, position["order_id_m2"])
-        if order_m2 is None:
-            print(f"Error: Order info for {position_market_m2} not found.")
+        try:
+            order_m2 = await get_order(client, position["order_id_m2"])
+            if order_m2 is None:
+                raise ValueError(f"Order info for {position_market_m2} not found.")
+        except Exception as e:
+            print(f"Error retrieving order for {position_market_m2}: {e}")
             continue
         
         order_market_m2 = order_m2["ticker"]
@@ -94,10 +103,14 @@ async def manage_trade_exits(client):
             continue
 
         # Get price data
-        series_1 = await get_candles_recent(client, position_market_m1)
-        time.sleep(0.2)
-        series_2 = await get_candles_recent(client, position_market_m2)
-        time.sleep(0.2)
+        try:
+            series_1 = await get_candles_recent(client, position_market_m1)
+            time.sleep(0.2)
+            series_2 = await get_candles_recent(client, position_market_m2)
+            time.sleep(0.2)
+        except Exception as e:
+            print(f"Error fetching candle data for {position_market_m1} or {position_market_m2}: {e}")
+            continue
 
         # Get markets data for reference of tick size
         if position_market_m1 not in markets["markets"] or position_market_m2 not in markets["markets"]:
@@ -139,7 +152,7 @@ async def manage_trade_exits(client):
             try:
                 # Close position for market 1
                 print(f"Closing position for {position_market_m1}")
-                close_order_m1, order_id = await place_market_order(client, market=position_market_m1, side=side_m1, size=position_size_m1, price=accept_price_m1, reduce_only=True)
+                close_order_m1 = await place_market_order(client, market=position_market_m1, side=side_m1, size=position_size_m1, price=accept_price_m1, reduce_only=True)
                 print(f"Closed order for market 1: {close_order_m1['id']}")
 
                 # Protect API
@@ -147,7 +160,7 @@ async def manage_trade_exits(client):
 
                 # Close position for market 2
                 print(f"Closing position for {position_market_m2}")
-                close_order_m2, order_id = await place_market_order(client, market=position_market_m2, side=side_m2, size=position_size_m2, price=accept_price_m2, reduce_only=True)
+                close_order_m2 = await place_market_order(client, market=position_market_m2, side=side_m2, size=position_size_m2, price=accept_price_m2, reduce_only=True)
                 print(f"Closed order for market 2: {close_order_m2['id']}")
 
             except Exception as e:

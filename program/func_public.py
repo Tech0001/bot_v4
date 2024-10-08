@@ -2,9 +2,8 @@ from dydx_v4_client import MAX_CLIENT_ID, Order, OrderFlags
 from dydx_v4_client.node.market import Market
 from dydx_v4_client.indexer.rest.constants import OrderType
 from constants import DYDX_ADDRESS, RESOLUTION
-from func_utils import format_number, get_ISO_times
+from func_utils import get_ISO_times
 import random
-import time
 import numpy as np
 import pandas as pd
 import asyncio
@@ -14,7 +13,7 @@ ISO_TIMES = get_ISO_times()
 # Get Recent Candles
 async def get_candles_recent(client, market):
     close_prices = []
-    time.sleep(0.2)  # Rate-limiting to avoid API overload
+    await asyncio.sleep(0.2)  # Rate-limiting to avoid API overload
     try:
         response = await client.indexer.markets.get_perpetual_market_candles(
             market=market,
@@ -36,7 +35,7 @@ async def get_candles_historical(client, market):
         tf_obj = ISO_TIMES[timeframe]
         from_iso = tf_obj["from_iso"] + ".000Z"
         to_iso = tf_obj["to_iso"] + ".000Z"
-        time.sleep(0.2)  # Rate-limiting for API
+        await asyncio.sleep(0.2)  # Rate-limiting for API
         try:
             response = await client.indexer.markets.get_perpetual_market_candles(
                 market=market,
@@ -79,7 +78,7 @@ async def fetch_market_prices(client):
                 print(f"Warning: No price data for market: {market}")
 
             # Adding rate-limiting between requests
-            time.sleep(0.2)
+            await asyncio.sleep(0.2)
 
         # Check if any markets have been added
         if not prices_dict:
@@ -175,7 +174,7 @@ async def get_open_positions(client):
 # Check if Positions are Open
 async def is_open_positions(client, market):
     try:
-        time.sleep(0.2)
+        await asyncio.sleep(0.2)
         response = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
         open_positions = response["subaccount"]["openPerpetualPositions"]
         return market in open_positions.keys()
@@ -190,7 +189,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         size = float(size)
         price = float(price)
 
-        ticker = market
+        # ticker = market
         current_block = await client.node.latest_block_height()
         market = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
         market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)

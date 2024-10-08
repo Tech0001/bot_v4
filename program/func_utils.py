@@ -18,7 +18,7 @@ def format_number(curr_num, match_num):
         return f"{int(curr_num)}"
 
 # Format the timestamp to ISO format
-def format_time(timestamp):
+def format_time(timestamp: datetime):
     return timestamp.replace(microsecond=0).isoformat()
 
 # Get ISO times for the past intervals
