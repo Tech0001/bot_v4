@@ -6,12 +6,10 @@ from func_public import get_candles_recent, get_markets
 import json
 import time
 
-from pprint import pprint
-
 # Manage trade exits
 async def manage_trade_exits(client):
     """
-    Manage exiting open positions based upon criteria set in constants
+    Manage exiting open positions based upon criteria set in constants.
     """
 
     # Initialize saving output
@@ -37,6 +35,12 @@ async def manage_trade_exits(client):
     # Protect API rate limit
     time.sleep(0.5)
 
+    # Fetch market data once at the beginning
+    markets = await get_markets(client)
+    if markets is None or "markets" not in markets:
+        print("Error: Markets data not available.")
+        return "error"
+
     # Check all saved positions match order record and apply exit logic
     for position in open_positions_dict:
         # Initialize is_close trigger
@@ -54,6 +58,10 @@ async def manage_trade_exits(client):
 
         # Get order info for market 1
         order_m1 = await get_order(client, position["order_id_m1"])
+        if order_m1 is None:
+            print(f"Error: Order info for {position_market_m1} not found.")
+            continue
+        
         order_market_m1 = order_m1["ticker"]
         order_size_m1 = order_m1["size"]
         order_side_m1 = order_m1["side"]
@@ -63,11 +71,15 @@ async def manage_trade_exits(client):
 
         # Get order info for market 2
         order_m2 = await get_order(client, position["order_id_m2"])
+        if order_m2 is None:
+            print(f"Error: Order info for {position_market_m2} not found.")
+            continue
+        
         order_market_m2 = order_m2["ticker"]
         order_size_m2 = order_m2["size"]
         order_side_m2 = order_m2["side"]
 
-        ## Ensure sizes match what was sent to the exchange
+        # Ensure sizes match what was sent to the exchange
         position_size_m1 = order_m1["size"]
         position_size_m2 = order_m2["size"]
 
@@ -78,8 +90,8 @@ async def manage_trade_exits(client):
 
         # Guard: If not all match exit with error
         if not check_m1 or not check_m2 or not check_live:
-            print(f"Warning: Open positions for {position_market_m1} and {position_market_m2} do not match exchange records")
-            exit(1)
+            print(f"Warning: Open positions for {position_market_m1} and {position_market_m2} do not match exchange records.")
+            continue
 
         # Get price data
         series_1 = await get_candles_recent(client, position_market_m1)
@@ -88,10 +100,9 @@ async def manage_trade_exits(client):
         time.sleep(0.2)
 
         # Get markets data for reference of tick size
-        markets = await get_markets(client)
-
-        # Protect API rate limit
-        time.sleep(0.2)
+        if position_market_m1 not in markets["markets"] or position_market_m2 not in markets["markets"]:
+            print(f"Error: Market data not found for {position_market_m1} or {position_market_m2}")
+            continue
 
         # Trigger close based on Z-Score if specified in constants
         if CLOSE_AT_ZSCORE_CROSS:
@@ -101,12 +112,12 @@ async def manage_trade_exits(client):
                 spread = series_1 - (hedge_ratio * series_2)
                 z_score_current = calculate_zscore(spread).values.tolist()[-1]
 
-            # Determine if Z-score conditions trigger an exit
-            z_score_level_check = abs(z_score_current) >= abs(z_score_traded)
-            z_score_cross_check = (z_score_current < 0 and z_score_traded > 0) or (z_score_current > 0 and z_score_traded < 0)
+                # Determine if Z-score conditions trigger an exit
+                z_score_level_check = abs(z_score_current) >= abs(z_score_traded)
+                z_score_cross_check = (z_score_current < 0 and z_score_traded > 0) or (z_score_current > 0 and z_score_traded < 0)
 
-            if z_score_level_check and z_score_cross_check:
-                is_close = True
+                if z_score_level_check and z_score_cross_check:
+                    is_close = True
 
         # Close positions if triggered
         if is_close:
