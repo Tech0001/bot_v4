@@ -9,7 +9,11 @@ TRADE_SPECIFIC_PAIRS = True  # Set to False to ignore specific pairs
 # List of specific pairs to trade (up to 10)
 SPECIFIC_PAIRS = [
     "MATIC-USD",
-    "ATOM-USD", 
+    "ATOM-USD",
+    "COMP-USD",
+    "XTZ-USD",
+    "FIL-USD",
+    "SNX-USD",
     
     # Add up to 10 pairs here
 ]
@@ -18,7 +22,7 @@ SPECIFIC_PAIRS = [
 MARKET_DATA_MODE = "TESTNET" # vs "MAINNET"
 
 # Close all open positions and orders
-ABORT_ALL_POSITIONS = True
+ABORT_ALL_POSITIONS = False
 
 # Find Cointegrated Pairs
 FIND_COINTEGRATED = False
@@ -36,8 +40,8 @@ RESOLUTION = "1HOUR"
 WINDOW = 24
 
 # Thresholds - Opening
-MAX_HALF_LIFE = 20
-ZSCORE_THRESH = 0.0
+MAX_HALF_LIFE = 10
+ZSCORE_THRESH = 0.9
 USD_PER_TRADE = 25
 USD_MIN_COLLATERAL = 100
 
