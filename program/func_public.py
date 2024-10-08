@@ -7,6 +7,7 @@ import random
 import time
 import numpy as np
 import pandas as pd
+import asyncio
 
 ISO_TIMES = get_ISO_times()
 
@@ -14,15 +15,19 @@ ISO_TIMES = get_ISO_times()
 async def get_candles_recent(client, market):
     close_prices = []
     time.sleep(0.2)  # Rate-limiting to avoid API overload
-    response = await client.indexer.markets.get_perpetual_market_candles(
-        market=market,
-        resolution=RESOLUTION
-    )
-    candles = response["candles"]
-    for candle in candles:
-        close_prices.append(candle["close"])
-    close_prices.reverse()  # Reverse to maintain chronological order
-    return np.array(close_prices).astype(np.float64)
+    try:
+        response = await client.indexer.markets.get_perpetual_market_candles(
+            market=market,
+            resolution=RESOLUTION
+        )
+        candles = response.get("candles", [])
+        for candle in candles:
+            close_prices.append(candle["close"])
+        close_prices.reverse()  # Reverse to maintain chronological order
+        return np.array(close_prices).astype(np.float64) if close_prices else None
+    except Exception as e:
+        print(f"Error fetching recent candles for {market}: {e}")
+        return None
 
 # Get Historical Candles
 async def get_candles_historical(client, market):
@@ -32,16 +37,20 @@ async def get_candles_historical(client, market):
         from_iso = tf_obj["from_iso"] + ".000Z"
         to_iso = tf_obj["to_iso"] + ".000Z"
         time.sleep(0.2)  # Rate-limiting for API
-        response = await client.indexer.markets.get_perpetual_market_candles(
-            market=market,
-            resolution=RESOLUTION,
-            from_iso=from_iso,
-            to_iso=to_iso,
-            limit=100
-        )
-        candles = response["candles"]
-        for candle in candles:
-            close_prices.append({"datetime": candle["startedAt"], market: candle["close"]})
+        try:
+            response = await client.indexer.markets.get_perpetual_market_candles(
+                market=market,
+                resolution=RESOLUTION,
+                from_iso=from_iso,
+                to_iso=to_iso,
+                limit=100
+            )
+            candles = response.get("candles", [])
+            for candle in candles:
+                close_prices.append({"datetime": candle["startedAt"], market: candle["close"]})
+        except Exception as e:
+            print(f"Error fetching historical candles for {market}: {e}")
+            return None
     close_prices.reverse()
     return close_prices
 
@@ -50,7 +59,10 @@ async def fetch_market_prices(client):
     try:
         # Fetch all markets data from the perpetual markets
         response = await client.indexer.markets.get_perpetual_markets()
-        markets_data = response["markets"]
+        markets_data = response.get("markets", {})
+
+        if not markets_data:
+            raise ValueError("Markets data not available.")
 
         # Initialize a dictionary to store close prices for each market
         prices_dict = {}
@@ -95,15 +107,21 @@ async def fetch_market_prices(client):
         print(f"Error fetching market prices: {e}")
         return None
 
-# Get Markets (missing in previous versions)
-async def get_markets(client):
-    try:
-        # Fetch all perpetual markets
-        response = await client.indexer.markets.get_perpetual_markets()
-        return response["markets"]
-    except Exception as e:
-        print(f"Error fetching markets: {e}")
-        return None
+# Get Markets with retry logic
+async def get_markets(client, retries=3):
+    for attempt in range(retries):
+        try:
+            response = await client.indexer.markets.get_perpetual_markets()
+            markets_data = response.get("markets", {})
+
+            if not markets_data:
+                raise ValueError("Markets data not available.")
+
+            return markets_data
+        except Exception as e:
+            print(f"Error fetching markets on attempt {attempt+1}: {e}")
+            await asyncio.sleep(1)  # Wait before retrying
+    raise Exception("Failed to fetch markets data after multiple retries.")
 
 # Cancel Order
 async def cancel_order(client, order_id):
