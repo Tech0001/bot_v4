@@ -109,8 +109,10 @@ async def open_positions(client):
                     base_size = format_number(base_quantity, base_step_size)
                     quote_size = format_number(quote_quantity, quote_step_size)
 
+                    # Check account balance
                     account = await get_account(client)
                     free_collateral = float(account["freeCollateral"])
+                    print(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
 
                     if free_collateral < USD_MIN_COLLATERAL:
                         print("Insufficient collateral to place the trade.")
@@ -126,4 +128,36 @@ async def open_positions(client):
 
                     # Place the quote order
                     quote_order_result = await place_market_order(client, quote_market, quote_side, quote_size, accept_quote_price, False)
-         
+                    if quote_order_result["status"] == "failed":
+                        print(f"Error placing quote order: {quote_order_result['error']}")
+                        continue
+                    else:
+                        print(f"Second order placed successfully for {quote_market}: {quote_order_result['order_id']}")
+
+                    # Create Bot Agent with accept_failsafe_base_price
+                    bot_agent = BotAgent(
+                        client,
+                        market_1=base_market,
+                        market_2=quote_market,
+                        base_side=base_side,
+                        base_size=base_size,
+                        base_price=accept_base_price,
+                        quote_side=quote_side,
+                        quote_size=quote_size,
+                        quote_price=accept_quote_price,
+                        accept_failsafe_base_price=accept_failsafe_base_price,
+                        z_score=z_score,
+                        half_life=half_life,
+                        hedge_ratio=hedge_ratio
+                    )
+
+                    bot_open_dict = await bot_agent.open_trades()
+
+                    if bot_open_dict == "failed":
+                        continue
+
+                    if bot_open_dict["pair_status"] == "LIVE":
+                        bot_agents.append(bot_open_dict)
+                        with open("bot_agents.json", "w") as f:
+                            json.dump(bot_agents, f)
+                        print("Trade opened successfully.")
