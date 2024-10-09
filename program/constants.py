@@ -23,10 +23,10 @@ SPECIFIC_PAIRS = [
 MARKET_DATA_MODE = "TESTNET" # vs "MAINNET"
 
 # Close all open positions and orders
-ABORT_ALL_POSITIONS = True
+ABORT_ALL_POSITIONS = False
 
 # Find Cointegrated Pairs
-FIND_COINTEGRATED = True
+FIND_COINTEGRATED = False
 
 # Manage Exits
 MANAGE_EXITS = True
