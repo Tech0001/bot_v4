@@ -4,7 +4,7 @@ from decouple import config
 # constants.py
 
 # Toggle for trading only specific pairs
-TRADE_SPECIFIC_PAIRS = True  # Set to False to ignore specific pairs
+TRADE_SPECIFIC_PAIRS = False  # Set to False to ignore specific pairs
 
 # List of specific pairs to trade (up to 10)
 SPECIFIC_PAIRS = [
@@ -23,10 +23,10 @@ SPECIFIC_PAIRS = [
 MARKET_DATA_MODE = "TESTNET" # vs "MAINNET"
 
 # Close all open positions and orders
-ABORT_ALL_POSITIONS = False
+ABORT_ALL_POSITIONS = True
 
 # Find Cointegrated Pairs
-FIND_COINTEGRATED = False
+FIND_COINTEGRATED = True
 
 # Manage Exits
 MANAGE_EXITS = True
@@ -42,8 +42,8 @@ WINDOW = 24
 
 # Thresholds - Opening
 MAX_HALF_LIFE = 10
-ZSCORE_THRESH = 0.8
-USD_PER_TRADE = 100
+ZSCORE_THRESH = 1.75
+USD_PER_TRADE = 50
 USD_MIN_COLLATERAL = 100
 
 # Thresholds - Closing
