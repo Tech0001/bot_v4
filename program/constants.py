@@ -14,7 +14,7 @@ SPECIFIC_PAIRS = [
     "XTZ-USD",
     "FIL-USD",
     "SNX-USD",
-    "YFI-USD",
+    "YFI-USD"
     
     # Add up to 10 pairs here
 ]
