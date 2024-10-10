@@ -23,10 +23,10 @@ SPECIFIC_PAIRS = [
 MARKET_DATA_MODE = "TESTNET" # vs "MAINNET"
 
 # Close all open positions and orders
-ABORT_ALL_POSITIONS = False
+ABORT_ALL_POSITIONS = False 
 
 # Find Cointegrated Pairs
-FIND_COINTEGRATED = True
+FIND_COINTEGRATED = False
 
 # Manage Exits
 MANAGE_EXITS = True
@@ -38,11 +38,11 @@ PLACE_TRADES = True
 RESOLUTION = "1HOUR"
 
 # Stats Window
-WINDOW = 24
+WINDOW = 21
 
 # Thresholds - Opening
-MAX_HALF_LIFE = 5
-ZSCORE_THRESH = 0.35
+MAX_HALF_LIFE = 20
+ZSCORE_THRESH = 1.99
 USD_PER_TRADE = 50
 USD_MIN_COLLATERAL = 100
 
