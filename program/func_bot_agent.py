@@ -84,7 +84,7 @@ class BotAgent:
             return "failed"
 
         # Wait for 15 seconds to ensure order fills
-        await asyncio.sleep(15)
+        await asyncio.sleep(25)
         order_status = await check_order_status(self.client, order_id)
 
         if order_status == "CANCELED":

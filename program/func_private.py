@@ -117,7 +117,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         )
 
         # Fetch recent orders to confirm placement
-        time.sleep(1.5)
+        time.sleep(2.5)
         orders = await client.indexer_account.account.get_subaccount_orders(
             DYDX_ADDRESS,
             0,

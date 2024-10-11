@@ -8,13 +8,15 @@ TRADE_SPECIFIC_PAIRS = False  # Set to False to ignore specific pairs
 
 # List of specific pairs to trade (up to 10)
 SPECIFIC_PAIRS = [
-    "MATIC-USD",
-    "ATOM-USD",
-    "COMP-USD",
-    "XTZ-USD",
-    "FIL-USD",
-    "SNX-USD",
-    "YFI-USD"
+    "ADA-USD",
+    "ICP-USD",
+    "UMA-USD",
+    "ETC-USD",
+    "ENJ-USD",
+    "AVAX-USD",
+    "ZEC-USD",
+    "ALGO-USD",
+    "LINK-USD"
     
     # Add up to 10 pairs here
 ]
@@ -41,8 +43,8 @@ RESOLUTION = "1HOUR"
 WINDOW = 21
 
 # Thresholds - Opening
-MAX_HALF_LIFE = 20
-ZSCORE_THRESH = 1.99
+MAX_HALF_LIFE = 19
+ZSCORE_THRESH = 1.0
 USD_PER_TRADE = 50
 USD_MIN_COLLATERAL = 100
 
