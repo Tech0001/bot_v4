@@ -8,15 +8,9 @@ TRADE_SPECIFIC_PAIRS = False  # Set to False to ignore specific pairs
 
 # List of specific pairs to trade (up to 10)
 SPECIFIC_PAIRS = [
-    "ADA-USD",
-    "ICP-USD",
-    "UMA-USD",
-    "ETC-USD",
-    "ENJ-USD",
-    "AVAX-USD",
-    "ZEC-USD",
-    "ALGO-USD",
-    "LINK-USD"
+    "ATOM-USD",
+    "MATIC-USD",
+    
     
     # Add up to 10 pairs here
 ]
@@ -25,7 +19,7 @@ SPECIFIC_PAIRS = [
 MARKET_DATA_MODE = "TESTNET" # vs "MAINNET"
 
 # Close all open positions and orders
-ABORT_ALL_POSITIONS = False 
+ABORT_ALL_POSITIONS = True 
 
 # Find Cointegrated Pairs
 FIND_COINTEGRATED = False
@@ -43,8 +37,8 @@ RESOLUTION = "1HOUR"
 WINDOW = 21
 
 # Thresholds - Opening
-MAX_HALF_LIFE = 19
-ZSCORE_THRESH = 1.0
+MAX_HALF_LIFE = 11.7
+ZSCORE_THRESH = .5
 USD_PER_TRADE = 50
 USD_MIN_COLLATERAL = 100
 

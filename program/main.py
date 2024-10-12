@@ -42,7 +42,7 @@ async def main():
     except Exception as e:
         print(f"Error connecting to client: {str(e)}")
         send_message(f"Failed to connect to client: {str(e)}")
-        return  # Instead of exit, safely end the function
+        return  # Exit safely if connection fails
 
     if ABORT_ALL_POSITIONS:
         try:
@@ -52,22 +52,22 @@ async def main():
         except Exception as e:
             print(f"Error closing all positions: {str(e)}")
             send_message(f"Error closing all positions: {str(e)}")
-            return  # Exit gracefully
+            return  # Exit safely if position closure fails
 
     if FIND_COINTEGRATED:
         try:
             print("Fetching token market prices...")
-            df_market_prices = await fetch_market_prices(client)  # Use updated function
+            df_market_prices = await fetch_market_prices(client)
             if df_market_prices is None or len(df_market_prices) == 0:
                 print("Error: Market prices could not be fetched or the data is empty.")
                 send_message("Error: Market prices could not be fetched or the data is empty.")
-                return  # Exit safely
+                return  # Exit safely if no market data
             print("Market prices fetched successfully")
-            print(df_market_prices)  # Check the content of the data (dictionary most likely)
+            print(df_market_prices)  # Check the content of the data
         except Exception as e:
             print(f"Error fetching market prices: {str(e)}")
             send_message(f"Error fetching market prices: {str(e)}")
-            return  # Exit safely
+            return  # Exit safely on market fetching error
 
         try:
             print("Storing cointegrated pairs...")
@@ -75,12 +75,12 @@ async def main():
             if stores_result != "saved":
                 print(f"Error saving cointegrated pairs: {stores_result}")
                 send_message(f"Error saving cointegrated pairs: {stores_result}")
-                return  # Exit safely
+                return  # Exit safely if saving fails
             print("Cointegrated pairs stored successfully")
         except Exception as e:
             print(f"Error saving cointegrated pairs: {str(e)}")
             send_message(f"Error saving cointegrated pairs: {str(e)}")
-            return  # Exit safely
+            return  # Exit safely on saving failure
 
     # Start the spinner
     start_spinner()
@@ -96,7 +96,7 @@ async def main():
             except Exception as e:
                 print(f"Error managing exiting positions: {str(e)}")
                 send_message(f"Error managing exiting positions: {str(e)}")
-                return  # Exit safely, or consider retrying
+                return  # Exit safely or retry
 
         if PLACE_TRADES:
             try:
@@ -106,6 +106,6 @@ async def main():
             except Exception as e:
                 print(f"Error trading pairs: {str(e)}")
                 send_message(f"Error opening trades: {str(e)}")
-                return  # Exit safely, or consider retrying
+                return  # Exit safely or retry
 
 asyncio.run(main())

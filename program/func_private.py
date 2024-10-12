@@ -13,7 +13,7 @@ async def cancel_order(client, order_id):
         if order is None:
             raise ValueError(f"Order {order_id} not found.")
         
-        market = Market((await client.indexer.markets.get_perpetual_markets(order["ticker"]))["markets"][order["ticker"]])
+        market = Market((await client.indexer.markets.get_perpetual_markets())["markets"][order["ticker"]])
         market_order_id = market.order_id(
             DYDX_ADDRESS,
             0,
@@ -39,11 +39,8 @@ async def get_order(client, order_id):
         print(f"Error fetching order {order_id}: {e}")
         return None
 
-# Get Account (Restored for other imports)
+# Get Account
 async def get_account(client):
-    """
-    Fetch account details (used in other parts of the bot)
-    """
     try:
         account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
         return account["subaccount"]
@@ -51,11 +48,8 @@ async def get_account(client):
         print(f"Error fetching account info: {e}")
         return None
 
-# Get Account Balance (Restored)
+# Get Account Balance
 async def get_account_balance(client):
-    """
-    Fetch and display account balance from dYdX
-    """
     try:
         account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
         balance = account["subaccount"]["balance"]
@@ -90,7 +84,10 @@ async def place_market_order(client, market, side, size, price, reduce_only):
     try:
         ticker = market
         current_block = await client.node.latest_block_height()
-        market_data = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
+        
+        # Fetch market data using the updated get_perpetual_markets method
+        market_data = Market((await client.indexer.markets.get_perpetual_markets())["markets"][market])
+        
         market_order_id = market_data.order_id(
             DYDX_ADDRESS,
             0,
@@ -116,7 +113,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
             ),
         )
 
-        # Fetch recent orders to confirm placement
+        # Confirm recent order placement
         time.sleep(2.5)
         orders = await client.indexer_account.account.get_subaccount_orders(
             DYDX_ADDRESS,
@@ -125,19 +122,41 @@ async def place_market_order(client, market, side, size, price, reduce_only):
             return_latest_orders="true",
         )
 
-        # Get latest order id
-        order_id = ""
-        for o in orders:
-            client_id = int(o["clientId"])
-            clob_pair_id = int(o["clobPairId"])
-            if client_id == market_order_id.client_id and clob_pair_id == market_order_id.clob_pair_id:
-                order_id = o["id"]
-                break
+        # Find matching order ID
+        order_id = next(
+            (o["id"] for o in orders if int(o["clientId"]) == market_order_id.client_id and int(o["clobPairId"]) == market_order_id.clob_pair_id),
+            ""
+        )
 
         if order_id == "":
             raise ValueError("Order placement failed: Unable to detect order in recent orders")
 
         print(f"Order placed successfully: {order_id}")
+        
+        # Update the bot_agents.json file after successful order placement
+        with open("bot_agents.json", "r+") as f:
+            try:
+                # Load existing data
+                data = json.load(f)
+            except json.JSONDecodeError:
+                # If file is empty or corrupt, start with an empty list
+                data = []
+            
+            # Add new order data
+            data.append({
+                "market": market,
+                "order_id": order_id,
+                "side": side,
+                "size": size,
+                "price": price,
+                "timestamp": time.time()
+            })
+
+            # Rewrite updated data to the file
+            f.seek(0)
+            json.dump(data, f, indent=4)
+            f.truncate()  # Ensure the file is truncated if new data is shorter
+
         return {"status": "success", "order_id": order_id}
 
     except Exception as e:
