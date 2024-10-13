@@ -217,7 +217,7 @@ async def abort_all_positions(client):
 
             # Clear saved agents after aborting all positions
             with open("bot_agents.json", "w") as f:
-                json.dump([], f)
+                json.dump([], f)  # Only clears the file after successful closing of positions.
         else:
             print("No open positions found.")
     except Exception as e:
