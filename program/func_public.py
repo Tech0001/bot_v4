@@ -71,7 +71,7 @@ async def get_markets(client):
     return await client.indexer.markets.get_perpetual_markets()
 
 # Construct market prices
-async def construct_market_prices(client, limit=55):
+async def construct_market_prices(client, limit=None):
     # Declare variables
     tradeable_markets = []
     markets = await get_markets(client)
