@@ -14,23 +14,43 @@ class Client:
 
 # Connect to DYDX
 async def connect_dydx():
+    """
+    Establishes a connection to the dYdX network using the provided mnemonic and account details.
+    """
     market_data_endpoint = INDEXER_ENDPOINT_MAINNET if MARKET_DATA_MODE != "TESTNET" else INDEXER_ACCOUNT_ENDPOINT
-    indexer = IndexerClient(host=market_data_endpoint, api_timeout=5)
-    indexer_account = IndexerClient(host=INDEXER_ACCOUNT_ENDPOINT, api_timeout=5)
-    node = await NodeClient.connect(TESTNET.node)
-    wallet = await Wallet.from_mnemonic(node, MNEMONIC, DYDX_ADDRESS)
-    client = Client(indexer, indexer_account, node, wallet)
-    await check_jurisdiction(client, "BTC-USD")
-    return client
+    try:
+        indexer = IndexerClient(host=market_data_endpoint, api_timeout=5)
+        indexer_account = IndexerClient(host=INDEXER_ACCOUNT_ENDPOINT, api_timeout=5)
+
+        # Connecting to the node and wallet
+        node = await NodeClient.connect(TESTNET.node)
+        wallet = await Wallet.from_mnemonic(node, MNEMONIC, DYDX_ADDRESS)
+
+        # Instantiate the client
+        client = Client(indexer, indexer_account, node, wallet)
+        print("Client connected successfully.")
+
+        # Check the jurisdiction for accessing dYdX
+        await check_jurisdiction(client, "BTC-USD")
+        return client
+
+    except Exception as e:
+        print(f"Error connecting to dYdX: {e}")
+        return None
 
 # Check Jurisdiction
 async def check_jurisdiction(client, market):
-    print("Checking Jurisdiction...")
+    """
+    Checks if the connection is allowed from the user's jurisdiction by attempting to retrieve recent market data.
+    """
+    print("Checking jurisdiction and connectivity...")
     try:
         await get_candles_recent(client, market)
-        print("SUCCESS: CONNECTION WORKING")
+        print("SUCCESS: Connection and jurisdiction confirmed.")
     except Exception as e:
         if "403" in str(e):
-            print("FAILED: LOCATION ACCESS LIKELY PROHIBITED")
-            print("DYDX likely prohibits use from your country.")
+            print("FAILED: Access likely prohibited from your current location.")
+            print("dYdX likely restricts access from your country.")
+        else:
+            print(f"Error while checking jurisdiction: {e}")
         exit(1)

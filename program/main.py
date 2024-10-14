@@ -9,7 +9,7 @@ from func_cointegration import store_cointegration_results
 from func_exit_pairs import manage_trade_exits
 from func_entry_pairs import open_positions
 from func_messaging import send_message
-from func_public import fetch_market_prices  # Corrected to match new version of func_public
+from func_public import construct_market_prices  # Corrected import
 
 # Spinner function
 def spinning_cursor():
@@ -57,7 +57,8 @@ async def main():
     if FIND_COINTEGRATED:
         try:
             print("Fetching token market prices...")
-            df_market_prices = await fetch_market_prices(client)
+            # Removed hardcoded limit, now no limit unless provided in function call
+            df_market_prices = await construct_market_prices(client)  # Fetch all markets by default
             if df_market_prices is None or len(df_market_prices) == 0:
                 print("Error: Market prices could not be fetched or the data is empty.")
                 send_message("Error: Market prices could not be fetched or the data is empty.")
