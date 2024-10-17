@@ -2,7 +2,6 @@ from func_private import place_market_order, check_order_status, cancel_order
 from datetime import datetime
 from func_messaging import send_message
 import asyncio
-import time
 
 class BotAgent:
     """

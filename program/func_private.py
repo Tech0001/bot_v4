@@ -76,7 +76,8 @@ async def place_market_order(client, market, side, size, price, reduce_only):
 
         ticker = market
         current_block = await client.node.latest_block_height()
-        market = Market((await client.indexer.markets.get_perpetual_markets(market))["markets"][market])
+        market_data = (await client.indexer.markets.get_perpetual_markets())["markets"][ticker]
+        market = Market(market_data)
         market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
         good_til_block = current_block + 1 + 10
 
@@ -125,7 +126,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
             
             # Add new order data
             data.append({
-                "market": market,
+                "market": ticker,  # Use the ticker string for serialization
                 "order_id": order_id,
                 "side": side,
                 "size": size,

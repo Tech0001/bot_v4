@@ -5,6 +5,7 @@ from func_private import place_market_order, get_open_positions, get_order
 from func_public import get_candles_recent, get_markets
 import json
 import time
+import numpy as np
 
 # Manage trade exits
 async def manage_trade_exits(client):
@@ -78,7 +79,7 @@ async def manage_trade_exits(client):
                 hedge_ratio = position["hedge_ratio"]
                 z_score_traded = position["z_score"]
                 if len(series_1) > 0 and len(series_1) == len(series_2):
-                    spread = series_1 - (hedge_ratio * series_2)
+                    spread = np.array(series_1) - (hedge_ratio * np.array(series_2))
                     z_score_current = calculate_zscore(spread).values.tolist()[-1]
 
                 # Determine if Z-score conditions trigger an exit

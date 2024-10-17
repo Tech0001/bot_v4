@@ -10,6 +10,8 @@ from func_exit_pairs import manage_trade_exits
 from func_entry_pairs import open_positions
 from func_messaging import send_message
 from func_public import construct_market_prices  # Corrected import
+from func_private import abort_all_positions
+
 
 # Spinner function
 def spinning_cursor():
