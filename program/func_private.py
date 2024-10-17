@@ -68,7 +68,7 @@ async def get_open_positions(client):
         print(f"Error fetching open positions: {e}")
         return {}
 
-# Place Market Order (updated)
+# Place Market Order (with added delay)
 async def place_market_order(client, market, side, size, price, reduce_only):
     try:
         size = float(size)
@@ -81,7 +81,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
         good_til_block = current_block + 1 + 10
 
-        # Place Market Order (removed 'order_type' argument)
+        # Place Market Order
         order = await client.node.place_order(
             client.wallet,
             market.order(
@@ -95,8 +95,10 @@ async def place_market_order(client, market, side, size, price, reduce_only):
             ),
         )
 
+        # Add a delay before fetching recent orders to allow time for the order to be fully registered
+        time.sleep(5)  # Introduce a 5-second delay here
+
         # Confirm recent order placement
-        time.sleep(2.5)
         orders = await client.indexer_account.account.get_subaccount_orders(
             DYDX_ADDRESS,
             0,
