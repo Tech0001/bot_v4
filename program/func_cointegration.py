@@ -42,6 +42,10 @@ def calculate_cointegration(series_1, series_2):
         return None, None, None
 
     try:
+        # Debug: Print the first few elements of the series
+        print("Series 1:", series_1[:5])
+        print("Series 2:", series_2[:5])
+
         coint_res = coint(series_1, series_2)
         coint_t = coint_res[0]
         p_value = coint_res[1]

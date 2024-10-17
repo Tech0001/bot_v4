@@ -32,11 +32,13 @@ async def connect_dydx():
 
         # Check the jurisdiction for accessing dYdX
         await check_jurisdiction(client, "BTC-USD")
-        return client
+
+        # Return client and addresses
+        return client, DYDX_ADDRESS, wallet.address
 
     except Exception as e:
         print(f"Error connecting to dYdX: {e}")
-        return None
+        return None, None, None
 
 # Check Jurisdiction
 async def check_jurisdiction(client, market):

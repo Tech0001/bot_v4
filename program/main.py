@@ -10,8 +10,6 @@ from func_exit_pairs import manage_trade_exits
 from func_entry_pairs import open_positions
 from func_messaging import send_message
 from func_public import construct_market_prices  # Corrected import
-from func_private import abort_all_positions
-
 
 # Spinner function
 def spinning_cursor():
@@ -39,8 +37,12 @@ async def main():
 
     try:
         print("Connecting to Client...")
-        client = await connect_dydx()
+        client, dydx_address, eth_address = await connect_dydx()
+        if client is None:
+            raise Exception("Failed to connect to client")
         print("Connected to client successfully")
+        print(f"dYdX Address: {dydx_address}")
+        print(f"Ethereum Address: {eth_address}")
     except Exception as e:
         print(f"Error connecting to client: {str(e)}")
         send_message(f"Failed to connect to client: {str(e)}")

@@ -14,8 +14,7 @@ from func_connections import connect_dydx
 from func_private import place_market_order
 
 async def main():
-  # Unpack the tuple returned by connect_dydx
-  client, dydx_address, eth_address = await connect_dydx()
+  client = await connect_dydx()
   order = await place_market_order(client, "MATIC-USD", "BUY", 10, 0, False)
 
 asyncio.run(main())

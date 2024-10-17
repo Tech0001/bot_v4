@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 # Format number to match desired decimal places
-def format_number(curr_num: float, match_num: float) -> str:
+def format_number(curr_num, match_num):
     """
     Formats curr_num to match the decimal places of match_num.
     Returns the correctly formatted string.
@@ -17,14 +17,14 @@ def format_number(curr_num: float, match_num: float) -> str:
         return f"{int(curr_num)}"
 
 # Format the timestamp to ISO format without microseconds
-def format_time(timestamp: datetime) -> str:
+def format_time(timestamp):
     """
     Formats the given timestamp into ISO format without microseconds.
     """
     return timestamp.replace(microsecond=0).isoformat()
 
 # Get ISO times for the past intervals
-def get_ISO_times() -> dict:
+def get_ISO_times():
     """
     Generates timestamps for several date ranges to fetch historical data.
     """

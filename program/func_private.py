@@ -1,5 +1,6 @@
 from dydx_v4_client import MAX_CLIENT_ID, Order, OrderFlags
 from dydx_v4_client.node.market import Market
+from dydx_v4_client.indexer.rest.constants import OrderType
 from constants import DYDX_ADDRESS
 from func_utils import format_number
 import random
@@ -68,55 +69,124 @@ async def get_open_positions(client):
         print(f"Error fetching open positions: {e}")
         return {}
 
-# Place Market Order (with added delay)
+# Place Market Order (enhanced logging)
 async def place_market_order(client, market, side, size, price, reduce_only):
     try:
         size = float(size)
         price = float(price)
 
+        # Log order parameters
+        print(f"Placing order: Market={market}, Side={side}, Size={size}, Price={price}, ReduceOnly={reduce_only}")
+
+        # Fetch and log subaccount details
+        account = await get_account(client)
+        print(f"Subaccount details: {account}")
+
         ticker = market
         current_block = await client.node.latest_block_height()
-        market_data = (await client.indexer.markets.get_perpetual_markets())["markets"][ticker]
-        market = Market(market_data)
-        market_order_id = market.order_id(DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM)
-        good_til_block = current_block + 1 + 10
+        market_data = (await client.indexer.markets.get_perpetual_markets(market))["markets"][market]
+        print(f"Market data: {market_data}")
+
+        market_instance = Market(market_data)
+        market_order_id = market_instance.order_id(
+            DYDX_ADDRESS, 0, random.randint(0, MAX_CLIENT_ID), OrderFlags.SHORT_TERM
+        )
+
+        # Set good_til_block to current_block + 20 (maximum allowed)
+        good_til_block = current_block + 20
+
+        # Set Order Type
+        order_type = OrderType.MARKET
+
+        # Set Time In Force to Immediate Or Cancel
+        time_in_force = Order.TimeInForce.TIME_IN_FORCE_UNSPECIFIED
 
         # Place Market Order
-        order = await client.node.place_order(
+        order_response = await client.node.place_order(
             client.wallet,
-            market.order(
-                market_order_id,
-                side=Order.Side.SIDE_BUY if side == "BUY" else Order.Side.SIDE_SELL,
-                size=size,
-                price=price,
-                time_in_force=Order.TIME_IN_FORCE_UNSPECIFIED,
+            market_instance.order(
+                order_id=market_order_id,
+                order_type=order_type,
+                side=Order.Side.SIDE_BUY if side.upper() == "BUY" else Order.Side.SIDE_SELL,
+                size=float(size),
+                price=float(price),  # Set price to 0.0 for market orders
+                time_in_force=time_in_force,
                 reduce_only=reduce_only,
-                good_til_block=good_til_block
+                good_til_block=good_til_block,
             ),
         )
 
-        # Add a delay before fetching recent orders to allow time for the order to be fully registered
-        time.sleep(5)  # Introduce a 5-second delay here
+        print("Order placement response:", order_response)
 
-        # Confirm recent order placement
-        orders = await client.indexer_account.account.get_subaccount_orders(
+        # Check if the order was placed successfully
+        if order_response and order_response.tx_response and order_response.tx_response.txhash:
+            txhash = order_response.tx_response.txhash
+            print("Order transaction hash:", txhash)
+        else:
+            print("Order response does not contain 'txhash'. Possible error:", order_response)
+            return {"status": "failed", "error": "Order placement failed"}
+
+
+        # Allow some time for the order to process
+        time.sleep(2.5)
+
+        # Fetch recent orders
+        orders_response = await client.indexer_account.account.get_subaccount_orders(
             DYDX_ADDRESS,
             0,
             ticker,
             return_latest_orders="true",
         )
 
+        # Initialize orders as an empty list if orders_response is None
+        orders = []
+        if orders_response is None:
+            print("Error: Received None response for orders.")
+            return {"status": "failed", "error": "No orders found"}
+        
+        # Check if orders_response is a list or dictionary
+        if isinstance(orders_response, dict):
+            orders = orders_response.get('orders', [])
+        elif isinstance(orders_response, list):
+            orders = orders_response
+        else:
+            raise ValueError("Unexpected response format for orders")
+
+        # Debug: Print each order to understand its structure
+        print("Recent orders fetched:")
+        for order_item in orders:
+            print("Order details:", order_item)
+
         # Find matching order ID
         order_id = next(
-            (o["id"] for o in orders if int(o["clientId"]) == market_order_id.client_id and int(o["clobPairId"]) == market_order_id.clob_pair_id),
-            ""
+            (
+                o["id"]
+                for o in orders
+                if int(o["clientId"]) == market_order_id.client_id
+                and int(o["clobPairId"]) == market_order_id.clob_pair_id
+            ),
+            "",
         )
 
         if order_id == "":
-            raise ValueError("Order placement failed: Unable to detect order in recent orders")
+            print("Order ID not found in recent orders. The order may have been immediately filled or canceled.")
+            # Since market orders are Immediate or Cancel, they might not appear in open orders
+            # You can try fetching filled orders or check the order status directly
+            order_status = await check_order_status(client, market_order_id)
+            print(f"Order status: {order_status}")
+            if order_status != "FILLED":
+                # Log detailed information about the order
+                print(f"Order details: {order_response}")
+                print(f"Market data: {market_data}")
+                print(f"Order ID: {market_order_id}")
+                raise ValueError("Order was not filled.")
+            else:
+                print("Order was filled successfully.")
+                order_id = market_order_id  # Use the order ID for record-keeping
 
-        print(f"Order placed successfully: {order_id}")
-        
+        else:
+            print(f"Order placed successfully: {order_id}")
+
         # Update the bot_agents.json file after successful order placement
         with open("bot_agents.json", "r+") as f:
             try:
@@ -125,23 +195,24 @@ async def place_market_order(client, market, side, size, price, reduce_only):
             except json.JSONDecodeError:
                 # If file is empty or corrupt, start with an empty list
                 data = []
-            
+
             # Add new order data
-            data.append({
-                "market": ticker,  # Use the ticker string for serialization
-                "order_id": order_id,
-                "side": side,
-                "size": size,
-                "price": price,
-                "timestamp": time.time()
-            })
+            data.append(
+                {
+                    "market": ticker,
+                    "order_id": str(order_id),
+                    "side": side,
+                    "size": size,
+                    "timestamp": time.time(),
+                }
+            )
 
             # Rewrite updated data to the file
             f.seek(0)
             json.dump(data, f, indent=4)
             f.truncate()  # Ensure the file is truncated if new data is shorter
 
-        return {"status": "success", "order_id": order_id}
+        return {"status": "success", "order_id": str(order_id)}
 
     except Exception as e:
         print(f"Error placing order: {e}")
