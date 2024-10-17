@@ -3,6 +3,8 @@ from datetime import datetime
 from func_messaging import send_message
 import asyncio
 import time
+import logging
+logger = logging.getLogger(__name__)
 
 class BotAgent:
     """
@@ -64,7 +66,7 @@ class BotAgent:
 
         # Ensure the order_id is valid
         if not order_id or order_id == "order_id":
-            print(f"Invalid order_id: {order_id}")
+            logger.info(f"Invalid order_id: {order_id}")
             self.order_dict["pair_status"] = "ERROR"
             return "error"
 
@@ -74,12 +76,12 @@ class BotAgent:
             if not order_status:
                 raise ValueError(f"Failed to retrieve order status for order_id: {order_id}")
         except Exception as e:
-            print(f"Error checking order status: {e}")
+            logger.info(f"Error checking order status: {e}")
             self.order_dict["pair_status"] = "ERROR"
             return "error"
 
         if order_status == "CANCELED":
-            print(f"Order {order_id} canceled.")
+            logger.info(f"Order {order_id} canceled.")
             self.order_dict["pair_status"] = "FAILED"
             return "failed"
 
@@ -88,21 +90,21 @@ class BotAgent:
         order_status = await check_order_status(self.client, order_id)
 
         if order_status == "CANCELED":
-            print(f"Order {order_id} canceled after retry.")
+            logger.info(f"Order {order_id} canceled after retry.")
             self.order_dict["pair_status"] = "FAILED"
             return "failed"
 
         if order_status != "FILLED":
             await cancel_order(self.client, order_id)
             self.order_dict["pair_status"] = "ERROR"
-            print(f"Order {order_id} not filled. Cancelling order.")
+            logger.info(f"Order {order_id} not filled. Cancelling order.")
             return "error"
 
         return "live"
 
     async def open_trades(self):
         # Place first order
-        print(f"Placing first order for {self.market_1}")
+        logger.info(f"Placing first order for {self.market_1}")
         try:
             base_order_result = await place_market_order(
                 self.client,
@@ -121,15 +123,15 @@ class BotAgent:
 
             self.order_dict["order_id_m1"] = order_id_m1
             self.order_dict["order_time_m1"] = datetime.now().isoformat()
-            print(f"First order placed successfully for {self.market_1}: {order_id_m1}")
+            logger.info(f"First order placed successfully for {self.market_1}: {order_id_m1}")
         except Exception as e:
-            print(f"Error placing first order: {e}")
+            logger.info(f"Error placing first order: {e}")
             self.order_dict["pair_status"] = "ERROR"
             self.order_dict["comments"] = f"Error placing order for {self.market_1}: {e}"
             return self.order_dict
 
         # Check status of the first order
-        print(f"Checking status for order {self.order_dict['order_id_m1']}")
+        logger.info(f"Checking status for order {self.order_dict['order_id_m1']}")
         order_status_m1 = await self.check_order_status_by_id(self.order_dict["order_id_m1"])
 
         if order_status_m1 != "live":
@@ -138,7 +140,7 @@ class BotAgent:
             return self.order_dict
 
         # Place second order
-        print(f"Placing second order for {self.market_2}")
+        logger.info(f"Placing second order for {self.market_2}")
         try:
             quote_order_result = await place_market_order(
                 self.client,
@@ -157,15 +159,15 @@ class BotAgent:
 
             self.order_dict["order_id_m2"] = order_id_m2
             self.order_dict["order_time_m2"] = datetime.now().isoformat()
-            print(f"Second order placed successfully for {self.market_2}: {order_id_m2}")
+            logger.info(f"Second order placed successfully for {self.market_2}: {order_id_m2}")
         except Exception as e:
-            print(f"Error placing second order: {e}")
+            logger.info(f"Error placing second order: {e}")
             self.order_dict["pair_status"] = "ERROR"
             self.order_dict["comments"] = f"Error placing order for {self.market_2}: {e}"
             return self.order_dict
 
         # Check status of the second order
-        print(f"Checking status for order {self.order_dict['order_id_m2']}")
+        logger.info(f"Checking status for order {self.order_dict['order_id_m2']}")
         order_status_m2 = await self.check_order_status_by_id(self.order_dict["order_id_m2"])
 
         if order_status_m2 != "live":
@@ -185,14 +187,14 @@ class BotAgent:
                 await asyncio.sleep(2)
                 close_order_status = await check_order_status(self.client, close_order_result.get("order_id"))
                 if close_order_status != "FILLED":
-                    print("Error: Failed to close the first order.")
+                    logger.info("Error: Failed to close the first order.")
                     send_message("Critical error: Failed to close first order.")
                     exit(1)
             except Exception as e:
-                print(f"Error closing first order: {e}")
+                logger.info(f"Error closing first order: {e}")
                 send_message(f"Critical error: {e}")
                 exit(1)
 
-        print("Both orders placed successfully.")
+        logger.info("Both orders placed successfully.")
         self.order_dict["pair_status"] = "LIVE"
         return self.order_dict

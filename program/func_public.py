@@ -3,6 +3,8 @@ from func_utils import get_ISO_times
 import pandas as pd
 import numpy as np
 import time
+import logging
+logger = logging.getLogger(__name__)
 
 # Get relevant time periods for ISO from and to
 ISO_TIMES = get_ISO_times()
@@ -93,21 +95,21 @@ async def construct_market_prices(client, limit=None):
 
     # Append other prices to DataFrame
     for (i, market) in enumerate(tradeable_markets):
-        print(f"Extracting prices for {i + 1} of {len(tradeable_markets)} tokens for {market}")
+        logger.info(f"Extracting prices for {i + 1} of {len(tradeable_markets)} tokens for {market}")
         close_prices_add = await get_candles_historical(client, market)
         df_add = pd.DataFrame(close_prices_add)
         try:
             df_add.set_index("datetime", inplace=True)
             df = pd.merge(df, df_add, how="outer", on="datetime", copy=False)
         except Exception as e:
-            print(f"Failed to add {market} - {e}")
+            logger.info(f"Failed to add {market} - {e}")
         del df_add
 
     # Check any columns with NaNs
     nans = df.columns[df.isna().any()].tolist()
     if len(nans) > 0:
-        print("Dropping columns: ")
-        print(nans)
+        logger.info("Dropping columns: ")
+        logger.info(nans)
         df.drop(columns=nans, inplace=True)
 
     # Return result

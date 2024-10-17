@@ -1,5 +1,7 @@
 import asyncio
 from func_connections import connect_dydx
+import logging
+logger = logging.getLogger(__name__)
 
 async def fetch_candlestick_data():
     client, dydx_address, eth_address = await connect_dydx()  # Ensure correct unpacking
@@ -12,8 +14,8 @@ async def fetch_candlestick_data():
     # For example, extract the specific market data you need
     market_data = response["markets"].get(market)
     if market_data:
-        print(f"Market data for {market}: {market_data}")
+        logger.info(f"Market data for {market}: {market_data}")
     else:
-        print(f"Market {market} not found.")
+        logger.info(f"Market {market} not found.")
 
 asyncio.run(fetch_candlestick_data())

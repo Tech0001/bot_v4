@@ -5,6 +5,8 @@ from func_public import get_candles_recent
 from func_private import get_open_positions, get_account, place_market_order
 import pandas as pd
 import json
+import logging
+logger = logging.getLogger(__name__)
 
 IGNORE_ASSETS = ["BTC-USD_x", "BTC-USD_y"]
 
@@ -19,7 +21,7 @@ async def fetch_market_data(client, market):
         response = await client.indexer.markets.get_perpetual_markets()
         return response["markets"].get(market, None)
     except Exception as e:
-        print(f"Error fetching market data for {market}: {e}")
+        logger.info(f"Error fetching market data for {market}: {e}")
         return None
 
 # Function to open positions based on cointegration signals
@@ -54,7 +56,7 @@ async def open_positions(client):
 
         # Skip invalid or unavailable markets
         if base_market not in available_markets or quote_market not in available_markets:
-            print(f"Skipping invalid or unavailable market pair: {base_market}/{quote_market}")
+            logger.info(f"Skipping invalid or unavailable market pair: {base_market}/{quote_market}")
             continue
 
         hedge_ratio = row["hedge_ratio"]
@@ -64,7 +66,7 @@ async def open_positions(client):
             series_1 = await get_candles_recent(client, base_market)
             series_2 = await get_candles_recent(client, quote_market)
         except Exception as e:
-            print(f"Error fetching prices: {e}")
+            logger.info(f"Error fetching prices: {e}")
             continue
 
         if len(series_1) > 0 and len(series_1) == len(series_2):
@@ -83,27 +85,27 @@ async def open_positions(client):
                 # Check account balance
                 account = await get_account(client)
                 free_collateral = float(account["freeCollateral"])
-                print(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
+                logger.info(f"Balance: {free_collateral} and minimum at {USD_MIN_COLLATERAL}")
 
                 if free_collateral < USD_MIN_COLLATERAL:
-                    print("Insufficient collateral to place the trade.")
+                    logger.info("Insufficient collateral to place the trade.")
                     break
 
                 # Place the base order
                 base_order_result = await place_market_order(client, base_market, base_side, base_size, base_price, False)
                 if base_order_result["status"] == "failed":
-                    print(f"Error placing base order: {base_order_result['error']}")
+                    logger.info(f"Error placing base order: {base_order_result['error']}")
                     continue
                 else:
-                    print(f"First order placed successfully for {base_market}: {base_order_result['order_id']}")
+                    logger.info(f"First order placed successfully for {base_market}: {base_order_result['order_id']}")
 
                 # Place the quote order
                 quote_order_result = await place_market_order(client, quote_market, quote_side, quote_size, quote_price, False)
                 if quote_order_result["status"] == "failed":
-                    print(f"Error placing quote order: {quote_order_result['error']}")
+                    logger.info(f"Error placing quote order: {quote_order_result['error']}")
                     continue
                 else:
-                    print(f"Second order placed successfully for {quote_market}: {quote_order_result['order_id']}")
+                    logger.info(f"Second order placed successfully for {quote_market}: {quote_order_result['order_id']}")
 
                 # Create Bot Agent
                 bot_agent = {
@@ -128,4 +130,4 @@ async def open_positions(client):
                 with open("bot_agents.json", "w") as f:
                     json.dump(bot_agents, f)
 
-                print("Trade opened successfully.")
+                logger.info("Trade opened successfully.")

@@ -4,6 +4,8 @@ import statsmodels.api as sm
 from statsmodels.tsa.stattools import coint
 from scipy.stats import linregress
 from constants import MAX_HALF_LIFE, WINDOW
+import logging
+logger = logging.getLogger(__name__)
 
 class SmartError(Exception):
     pass
@@ -34,17 +36,17 @@ def calculate_cointegration(series_1, series_2):
     series_2 = np.array(series_2).astype(np.float64)
 
     if len(series_1) == 0 or len(series_2) == 0:
-        print("Error: One or both of the series are empty. Skipping calculation.")
+        logger.info("Error: One or both of the series are empty. Skipping calculation.")
         return None, None, None
 
     if len(series_1) != len(series_2):
-        print(f"Error: Series length mismatch: series_1 has length {len(series_1)}, series_2 has length {len(series_2)}")
+        logger.info(f"Error: Series length mismatch: series_1 has length {len(series_1)}, series_2 has length {len(series_2)}")
         return None, None, None
 
     try:
-        # Debug: Print the first few elements of the series
-        print("Series 1:", series_1[:5])
-        print("Series 2:", series_2[:5])
+        # Debug: logger.info the first few elements of the series
+        logger.info("Series 1:", series_1[:5])
+        logger.info("Series 2:", series_2[:5])
 
         coint_res = coint(series_1, series_2)
         coint_t = coint_res[0]
@@ -56,7 +58,7 @@ def calculate_cointegration(series_1, series_2):
         model = sm.OLS(series_1, series_2_with_constant).fit()
 
         if len(model.params) < 2:
-            print(f"Error: Regression model did not return expected number of parameters: {model.params}")
+            logger.info(f"Error: Regression model did not return expected number of parameters: {model.params}")
             return None, None, None
 
         hedge_ratio = model.params[1]
@@ -69,7 +71,7 @@ def calculate_cointegration(series_1, series_2):
         coint_flag = 1 if p_value < 0.05 and t_check else 0
 
     except Exception as e:
-        print(f"Error in cointegration calculation: {e}")
+        logger.info(f"Error in cointegration calculation: {e}")
         return None, None, None
 
     return coint_flag, hedge_ratio, half_life
@@ -107,5 +109,5 @@ def store_cointegration_results(df_market_prices):
     del df_criteria_met
 
     # Return result
-    print("Cointegrated pairs successfully saved")
+    logger.info("Cointegrated pairs successfully saved")
     return "saved"

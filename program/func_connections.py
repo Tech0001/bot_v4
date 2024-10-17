@@ -3,6 +3,8 @@ from dydx_v4_client.indexer.rest.indexer_client import IndexerClient
 from dydx_v4_client.network import TESTNET
 from constants import INDEXER_ACCOUNT_ENDPOINT, INDEXER_ENDPOINT_MAINNET, MNEMONIC, DYDX_ADDRESS, MARKET_DATA_MODE
 from func_public import get_candles_recent
+import logging
+logger = logging.getLogger(__name__)
 
 # Client Class
 class Client:
@@ -28,7 +30,7 @@ async def connect_dydx():
 
         # Instantiate the client
         client = Client(indexer, indexer_account, node, wallet)
-        print("Client connected successfully.")
+        logger.info("Client connected successfully.")
 
         # Check the jurisdiction for accessing dYdX
         await check_jurisdiction(client, "BTC-USD")
@@ -37,7 +39,7 @@ async def connect_dydx():
         return client, DYDX_ADDRESS, wallet.address
 
     except Exception as e:
-        print(f"Error connecting to dYdX: {e}")
+        logger.info(f"Error connecting to dYdX: {e}")
         return None, None, None
 
 # Check Jurisdiction
@@ -45,14 +47,14 @@ async def check_jurisdiction(client, market):
     """
     Checks if the connection is allowed from the user's jurisdiction by attempting to retrieve recent market data.
     """
-    print("Checking jurisdiction and connectivity...")
+    logger.info("Checking jurisdiction and connectivity...")
     try:
         await get_candles_recent(client, market)
-        print("SUCCESS: Connection and jurisdiction confirmed.")
+        logger.info("SUCCESS: Connection and jurisdiction confirmed.")
     except Exception as e:
         if "403" in str(e):
-            print("FAILED: Access likely prohibited from your current location.")
-            print("dYdX likely restricts access from your country.")
+            logger.info("FAILED: Access likely prohibited from your current location.")
+            logger.info("dYdX likely restricts access from your country.")
         else:
-            print(f"Error while checking jurisdiction: {e}")
+            logger.info(f"Error while checking jurisdiction: {e}")
         exit(1)

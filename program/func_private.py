@@ -6,6 +6,8 @@ from func_utils import format_number
 import random
 import time
 import json
+import logging
+logger = logging.getLogger(__name__)
 
 # Cancel Order
 async def cancel_order(client, order_id):
@@ -28,16 +30,16 @@ async def cancel_order(client, order_id):
             market_order_id,
             good_til_block=good_til_block
         )
-        print(f"Attempted to cancel order for: {order['ticker']}. Please check the dashboard to ensure it was canceled.")
+        logger.info(f"Attempted to cancel order for: {order['ticker']}. Please check the dashboard to ensure it was canceled.")
     except Exception as e:
-        print(f"Error canceling order: {e}")
+        logger.info(f"Error canceling order: {e}")
 
 # Get Order
 async def get_order(client, order_id):
     try:
         return await client.indexer_account.account.get_order(order_id)
     except Exception as e:
-        print(f"Error fetching order {order_id}: {e}")
+        logger.info(f"Error fetching order {order_id}: {e}")
         return None
 
 # Get Account
@@ -46,7 +48,7 @@ async def get_account(client):
         account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
         return account["subaccount"]
     except Exception as e:
-        print(f"Error fetching account info: {e}")
+        logger.info(f"Error fetching account info: {e}")
         return None
 
 # Get Account Balance
@@ -54,10 +56,10 @@ async def get_account_balance(client):
     try:
         account = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
         balance = account["subaccount"]["balance"]
-        print(f"Account Balance: {balance}")
+        logger.info(f"Account Balance: {balance}")
         return balance
     except Exception as e:
-        print(f"Error fetching account balance: {e}")
+        logger.info(f"Error fetching account balance: {e}")
         return None
 
 # Get Open Positions
@@ -66,7 +68,7 @@ async def get_open_positions(client):
         response = await client.indexer_account.account.get_subaccount(DYDX_ADDRESS, 0)
         return response["subaccount"]["openPerpetualPositions"]
     except Exception as e:
-        print(f"Error fetching open positions: {e}")
+        logger.info(f"Error fetching open positions: {e}")
         return {}
 
 # Place Market Order (enhanced logging)
@@ -76,16 +78,16 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         price = float(price)
 
         # Log order parameters
-        print(f"Placing order: Market={market}, Side={side}, Size={size}, Price={price}, ReduceOnly={reduce_only}")
+        logger.info(f"Placing order: Market={market}, Side={side}, Size={size}, Price={price}, ReduceOnly={reduce_only}")
 
         # Fetch and log subaccount details
         account = await get_account(client)
-        print(f"Subaccount details: {account}")
+        logger.info(f"Subaccount details: {account}")
 
         ticker = market
         current_block = await client.node.latest_block_height()
         market_data = (await client.indexer.markets.get_perpetual_markets(market))["markets"][market]
-        print(f"Market data: {market_data}")
+        logger.info(f"Market data: {market_data}")
 
         market_instance = Market(market_data)
         market_order_id = market_instance.order_id(
@@ -116,14 +118,14 @@ async def place_market_order(client, market, side, size, price, reduce_only):
             ),
         )
 
-        print("Order placement response:", order_response)
+        logger.info("Order placement response:", order_response)
 
         # Check if the order was placed successfully
         if order_response and order_response.tx_response and order_response.tx_response.txhash:
             txhash = order_response.tx_response.txhash
-            print("Order transaction hash:", txhash)
+            logger.info("Order transaction hash:", txhash)
         else:
-            print("Order response does not contain 'txhash'. Possible error:", order_response)
+            logger.info("Order response does not contain 'txhash'. Possible error:", order_response)
             return {"status": "failed", "error": "Order placement failed"}
 
 
@@ -141,7 +143,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         # Initialize orders as an empty list if orders_response is None
         orders = []
         if orders_response is None:
-            print("Error: Received None response for orders.")
+            logger.info("Error: Received None response for orders.")
             return {"status": "failed", "error": "No orders found"}
         
         # Check if orders_response is a list or dictionary
@@ -152,10 +154,10 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         else:
             raise ValueError("Unexpected response format for orders")
 
-        # Debug: Print each order to understand its structure
-        print("Recent orders fetched:")
+        # Debug: logger.info each order to understand its structure
+        logger.info("Recent orders fetched:")
         for order_item in orders:
-            print("Order details:", order_item)
+            logger.info("Order details:", order_item)
 
         # Find matching order ID
         order_id = next(
@@ -169,23 +171,23 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         )
 
         if order_id == "":
-            print("Order ID not found in recent orders. The order may have been immediately filled or canceled.")
+            logger.info("Order ID not found in recent orders. The order may have been immediately filled or canceled.")
             # Since market orders are Immediate or Cancel, they might not appear in open orders
             # You can try fetching filled orders or check the order status directly
             order_status = await check_order_status(client, market_order_id)
-            print(f"Order status: {order_status}")
+            logger.info(f"Order status: {order_status}")
             if order_status != "FILLED":
                 # Log detailed information about the order
-                print(f"Order details: {order_response}")
-                print(f"Market data: {market_data}")
-                print(f"Order ID: {market_order_id}")
+                logger.info(f"Order details: {order_response}")
+                logger.info(f"Market data: {market_data}")
+                logger.info(f"Order ID: {market_order_id}")
                 raise ValueError("Order was not filled.")
             else:
-                print("Order was filled successfully.")
+                logger.info("Order was filled successfully.")
                 order_id = market_order_id  # Use the order ID for record-keeping
 
         else:
-            print(f"Order placed successfully: {order_id}")
+            logger.info(f"Order placed successfully: {order_id}")
 
         # Update the bot_agents.json file after successful order placement
         with open("bot_agents.json", "r+") as f:
@@ -215,7 +217,7 @@ async def place_market_order(client, market, side, size, price, reduce_only):
         return {"status": "success", "order_id": str(order_id)}
 
     except Exception as e:
-        print(f"Error placing order: {e}")
+        logger.info(f"Error placing order: {e}")
         return {"status": "failed", "error": str(e)}
 
 # Cancel All Open Orders
@@ -225,11 +227,11 @@ async def cancel_all_orders(client):
         if len(orders) > 0:
             for order in orders:
                 await cancel_order(client, order["id"])
-                print(f"Order {order['id']} canceled.")
+                logger.info(f"Order {order['id']} canceled.")
         else:
-            print("No open orders found.")
+            logger.info("No open orders found.")
     except Exception as e:
-        print(f"Error canceling open orders: {e}")
+        logger.info(f"Error canceling open orders: {e}")
 
 # Abort All Open Positions
 async def abort_all_positions(client):
@@ -255,7 +257,7 @@ async def abort_all_positions(client):
 
                 # Ensure market exists
                 if market not in markets:
-                    print(f"Market data for {market} not found.")
+                    logger.info(f"Market data for {market} not found.")
                     continue
 
                 tick_size = markets[market]["tickSize"]
@@ -266,17 +268,17 @@ async def abort_all_positions(client):
                 result = await place_market_order(client, market, side, pos["sumOpen"], accept_price, True)
 
                 if result["status"] == "failed":
-                    print(f"Error closing position for {market}: {result['error']}")
+                    logger.info(f"Error closing position for {market}: {result['error']}")
                 else:
-                    print(f"Closed position for {market}: {result['order_id']}")
+                    logger.info(f"Closed position for {market}: {result['order_id']}")
 
             # Clear saved agents after aborting all positions
             with open("bot_agents.json", "w") as f:
                 json.dump([], f)  # Only clears the file after successful closing of positions.
         else:
-            print("No open positions found.")
+            logger.info("No open positions found.")
     except Exception as e:
-        print(f"Error aborting all positions: {e}")
+        logger.info(f"Error aborting all positions: {e}")
 
 # Check Order Status
 async def check_order_status(client, order_id):
@@ -290,5 +292,5 @@ async def check_order_status(client, order_id):
         else:
             raise ValueError("Invalid order_id provided")
     except Exception as e:
-        print(f"Error checking order status for {order_id}: {e}")
+        logger.info(f"Error checking order status for {order_id}: {e}")
         return "UNKNOWN"

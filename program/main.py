@@ -10,6 +10,30 @@ from func_exit_pairs import manage_trade_exits
 from func_entry_pairs import open_positions
 from func_messaging import send_message
 from func_public import construct_market_prices  # Corrected import
+import logging
+from logging.handlers import RotatingFileHandler
+
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+# Console handler
+c_handler = logging.StreamHandler()
+c_handler.setLevel(logging.DEBUG)
+
+# File handler with rotation
+f_handler = RotatingFileHandler('bot.log', maxBytes=5*1024*1024, backupCount=2)
+f_handler.setLevel(logging.DEBUG)
+
+# Formatter
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+c_handler.setFormatter(formatter)
+f_handler.setFormatter(formatter)
+
+# Add handlers to the root logger
+logger.addHandler(c_handler)
+logger.addHandler(f_handler)
+
 
 # Spinner function
 def spinning_cursor():
@@ -36,54 +60,54 @@ async def main():
     send_message("Bot launch successful")
 
     try:
-        print("Connecting to Client...")
+        logger.info("Connecting to Client...")
         client, dydx_address, eth_address = await connect_dydx()
         if client is None:
             raise Exception("Failed to connect to client")
-        print("Connected to client successfully")
-        print(f"dYdX Address: {dydx_address}")
-        print(f"Ethereum Address: {eth_address}")
+        logger.info("Connected to client successfully")
+        logger.info(f"dYdX Address: {dydx_address}")
+        logger.info(f"Ethereum Address: {eth_address}")
     except Exception as e:
-        print(f"Error connecting to client: {str(e)}")
+        logger.info(f"Error connecting to client: {str(e)}")
         send_message(f"Failed to connect to client: {str(e)}")
         return  # Exit safely if connection fails
 
     if ABORT_ALL_POSITIONS:
         try:
-            print("Closing open positions...")
+            logger.info("Closing open positions...")
             await abort_all_positions(client)
-            print("All positions closed successfully")
+            logger.info("All positions closed successfully")
         except Exception as e:
-            print(f"Error closing all positions: {str(e)}")
+            logger.info(f"Error closing all positions: {str(e)}")
             send_message(f"Error closing all positions: {str(e)}")
             return  # Exit safely if position closure fails
 
     if FIND_COINTEGRATED:
         try:
-            print("Fetching token market prices...")
+            logger.info("Fetching token market prices...")
             # Removed hardcoded limit, now no limit unless provided in function call
             df_market_prices = await construct_market_prices(client)  # Fetch all markets by default
             if df_market_prices is None or len(df_market_prices) == 0:
-                print("Error: Market prices could not be fetched or the data is empty.")
+                logger.info("Error: Market prices could not be fetched or the data is empty.")
                 send_message("Error: Market prices could not be fetched or the data is empty.")
                 return  # Exit safely if no market data
-            print("Market prices fetched successfully")
-            print(df_market_prices)  # Check the content of the data
+            logger.info("Market prices fetched successfully")
+            logger.info(df_market_prices)  # Check the content of the data
         except Exception as e:
-            print(f"Error fetching market prices: {str(e)}")
+            logger.info(f"Error fetching market prices: {str(e)}")
             send_message(f"Error fetching market prices: {str(e)}")
             return  # Exit safely on market fetching error
 
         try:
-            print("Storing cointegrated pairs...")
+            logger.info("Storing cointegrated pairs...")
             stores_result = store_cointegration_results(df_market_prices)
             if stores_result != "saved":
-                print(f"Error saving cointegrated pairs: {stores_result}")
+                logger.info(f"Error saving cointegrated pairs: {stores_result}")
                 send_message(f"Error saving cointegrated pairs: {stores_result}")
                 return  # Exit safely if saving fails
-            print("Cointegrated pairs stored successfully")
+            logger.info("Cointegrated pairs stored successfully")
         except Exception as e:
-            print(f"Error saving cointegrated pairs: {str(e)}")
+            logger.info(f"Error saving cointegrated pairs: {str(e)}")
             send_message(f"Error saving cointegrated pairs: {str(e)}")
             return  # Exit safely on saving failure
 
@@ -94,22 +118,22 @@ async def main():
     while True:
         if MANAGE_EXITS:
             try:
-                print("Managing exits...")
+                logger.info("Managing exits...")
                 await manage_trade_exits(client)
-                print("Exit management complete")
+                logger.info("Exit management complete")
                 time.sleep(1)  # Ensure API rate-limiting is handled
             except Exception as e:
-                print(f"Error managing exiting positions: {str(e)}")
+                logger.info(f"Error managing exiting positions: {str(e)}")
                 send_message(f"Error managing exiting positions: {str(e)}")
                 return  # Exit safely or retry
 
         if PLACE_TRADES:
             try:
-                print("Finding trading opportunities...")
+                logger.info("Finding trading opportunities...")
                 await open_positions(client)
-                print("Trades placed successfully")
+                logger.info("Trades placed successfully")
             except Exception as e:
-                print(f"Error trading pairs: {str(e)}")
+                logger.info(f"Error trading pairs: {str(e)}")
                 send_message(f"Error opening trades: {str(e)}")
                 return  # Exit safely or retry
 

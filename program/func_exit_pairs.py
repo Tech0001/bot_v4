@@ -5,6 +5,8 @@ from func_private import place_market_order, get_open_positions, get_order
 from func_public import get_candles_recent, get_markets
 import json
 import time
+import logging
+logger = logging.getLogger(__name__)
 
 # Manage trade exits
 async def manage_trade_exits(client):
@@ -21,12 +23,12 @@ async def manage_trade_exits(client):
         with open("bot_agents.json", "r") as open_positions_file:
             open_positions_dict = json.load(open_positions_file)
     except FileNotFoundError:
-        print("Error: bot_agents.json not found")
+        logger.info("Error: bot_agents.json not found")
         return "complete"
 
     # Guard: Exit if no open positions in file
     if len(open_positions_dict) < 1:
-        print("No open positions in bot_agents.json")
+        logger.info("No open positions in bot_agents.json")
         return "complete"
 
     # Get all open positions from the trading platform
@@ -43,11 +45,11 @@ async def manage_trade_exits(client):
         # Check if the position is pair-based (market_1 and market_2) or single-market
         if "market_1" in position and "market_2" in position:
             # Pair-based position
-            print(f"Processing pair-based position: {position['market_1']}/{position['market_2']}")
+            logger.info(f"Processing pair-based position: {position['market_1']}/{position['market_2']}")
 
             # Ensure the position has prices for market_1 and market_2
             if "price_m1" not in position or "price_m2" not in position:
-                print(f"Error: Missing price_m1 or price_m2 in position for {position['market_1']}/{position['market_2']}")
+                logger.info(f"Error: Missing price_m1 or price_m2 in position for {position['market_1']}/{position['market_2']}")
                 continue  # Skip this position
 
             # Initialize close trigger
@@ -69,7 +71,7 @@ async def manage_trade_exits(client):
 
             if (position["order_m1_side"] == "BUY" and current_price_m1 < original_price_m1) or \
                (position["order_m2_side"] == "BUY" and current_price_m2 < original_price_m2):
-                print(f"Skipping exit: Selling {position_market_m1}/{position_market_m2} would result in a loss.")
+                logger.info(f"Skipping exit: Selling {position_market_m1}/{position_market_m2} would result in a loss.")
                 save_output.append(position)
                 continue
 
@@ -105,25 +107,25 @@ async def manage_trade_exits(client):
 
                 # Close positions
                 try:
-                    print(f"Closing position for {position_market_m1}")
+                    logger.info(f"Closing position for {position_market_m1}")
                     await place_market_order(client, market=position_market_m1, side=side_m1, size=position["order_m1_size"], price=accept_price_m1, reduce_only=True)
 
-                    print(f"Closing position for {position_market_m2}")
+                    logger.info(f"Closing position for {position_market_m2}")
                     await place_market_order(client, market=position_market_m2, side=side_m2, size=position["order_m2_size"], price=accept_price_m2, reduce_only=True)
 
                 except Exception as e:
-                    print(f"Error closing positions for {position_market_m1} and {position_market_m2}: {e}")
+                    logger.info(f"Error closing positions for {position_market_m1} and {position_market_m2}: {e}")
                     save_output.append(position)
             else:
                 save_output.append(position)
 
         # Handle single-market positions if applicable (logic can be added here)
         elif "market" in position:
-            print(f"Processing single-market position: {position['market']}")
+            logger.info(f"Processing single-market position: {position['market']}")
             # Single-market logic (if needed)
             save_output.append(position)
 
     # Save remaining positions
-    print(f"{len(save_output)} positions remaining. Saving file...")
+    logger.info(f"{len(save_output)} positions remaining. Saving file...")
     with open("bot_agents.json", "w") as f:
         json.dump(save_output, f)
